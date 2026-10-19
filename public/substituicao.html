@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Substituição no SIRAC</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --fundo: #07111f;
+    --fundo-2: #0a1a2e;
+    --painel: #0b1829;
+    --campo: #09162a;
+    --borda-painel: #1a4a73;
+    --borda: #1e5583;
+    --tinta: #e8f3ff;
+    --tinta-suave: #8fb0cc;
+    --placeholder: #6384a0;
+    --ciano: #14b8ff;
+    --ciano-escuro: #0c9fe0;
+    --sobre-ciano: #03121f;
+    --erro: #ff8d8d;
+    --erro-fundo: #2b1217;
+    --aviso: #ffd28a;
+    --aviso-fundo: #2b2210;
+    --ok: #86e6b8;
+    --ok-fundo: #0e2f26;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: radial-gradient(1200px 600px at 50% -10%, #0f2a47 0%, var(--fundo) 60%);
+    background-color: var(--fundo);
+    color: var(--tinta);
+    font-family: "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+    line-height: 1.5;
+    display: flex;
+    justify-content: center;
+    padding: 24px 16px 40px;
+  }
+
+  main { width: 100%; max-width: 600px; }
+
+  .topo {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+  .logo { width: 44px; height: 44px; display: block; }
+
+  /* botões de navegação */
+  .nav { display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
+  .btn-nav {
+    display: inline-flex;
+    align-items: center;
+    height: 38px;
+    padding: 0 16px;
+    font: inherit;
+    font-size: 0.9rem;
+    font-weight: 650;
+    text-decoration: none;
+    color: var(--ciano);
+    background: transparent;
+    border: 1px solid var(--ciano);
+    border-radius: 6px;
+  }
+  .btn-nav:hover, .btn-nav.ativo { color: var(--sobre-ciano); background: var(--ciano); }
+  .btn-nav:focus-visible { outline: 2px solid var(--ciano); outline-offset: 2px; }
+
+  h1 { margin: 0 0 6px; font-size: 1.55rem; font-weight: 650; letter-spacing: -0.01em; }
+  p.sub { margin: 0 0 20px; color: var(--ciano); opacity: 0.85; font-size: 0.95rem; }
+
+  section {
+    background: linear-gradient(180deg, var(--fundo-2), var(--painel));
+    border: 1px solid var(--borda-painel);
+    border-radius: 10px;
+    padding: 22px;
+    margin-bottom: 18px;
+  }
+  h2 { font-size: 1.02rem; margin: 0 0 16px; font-weight: 650; }
+
+  label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 16px 0 8px;
+    font-size: 0.92rem;
+    font-weight: 650;
+  }
+  .ico {
+    width: 17px;
+    height: 17px;
+    flex: none;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  label .ico { color: var(--ciano); }
+
+  input, select {
+    width: 100%;
+    height: 46px;
+    padding: 0 14px;
+    font: inherit;
+    color: var(--tinta);
+    background: var(--campo);
+    border: 1px solid var(--borda);
+    border-radius: 6px;
+  }
+  input::placeholder { color: var(--placeholder); }
+
+  input:focus-visible, select:focus-visible, button:focus-visible, summary:focus-visible {
+    outline: 2px solid var(--ciano);
+    outline-offset: 2px;
+  }
+
+  .linha { display: flex; gap: 20px; }
+  .linha > div { flex: 1; min-width: 0; }
+  .busca { display: flex; gap: 12px; align-items: flex-end; }
+  .busca > div { flex: 1; min-width: 0; }
+
+  button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    height: 46px;
+    padding: 0 20px;
+    font: inherit;
+    font-weight: 650;
+    color: var(--sobre-ciano);
+    background: var(--ciano);
+    border: 1px solid var(--ciano);
+    border-radius: 6px;
+    cursor: pointer;
+  }
+  button:hover { background: var(--ciano-escuro); border-color: var(--ciano-escuro); }
+  button:disabled { opacity: 0.55; cursor: progress; }
+  #btnPreencher { width: 100%; margin-top: 4px; }
+
+  .msg {
+    margin-top: 14px;
+    padding: 12px 14px;
+    border-radius: 6px;
+    border: 1px solid transparent;
+    font-size: 0.92rem;
+    line-height: 1.45;
+  }
+  .msg.erro { background: var(--erro-fundo); color: var(--erro); border-color: #6b2a31; }
+  .msg.aviso { background: var(--aviso-fundo); color: var(--aviso); border-color: #6b5320; }
+  .msg.ok { background: var(--ok-fundo); color: var(--ok); border-color: #1f6a4f; }
+  .msg ul { margin: 6px 0 0 18px; padding: 0; }
+
+  details { margin-top: 16px; font-size: 0.88rem; color: var(--tinta-suave); }
+  summary { cursor: pointer; }
+  details p { margin: 8px 0 0; }
+  .oculto { display: none; }
+  [hidden] { display: none !important; }
+  .historico { margin-top: 16px; padding: 12px 14px; background: #0c2740; border: 1px solid #1b5a8c; border-radius: 6px; font-size: 0.92rem; }
+  .historico .titulo { color: var(--tinta); }
+  .historico .titulo strong { color: var(--ciano); }
+  .historico .codigos { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+  .historico .codigos button { height: 32px; padding: 0 12px; font-size: 0.88rem; font-weight: 600; color: var(--ciano); background: transparent; border: 1px solid var(--ciano); border-radius: 999px; }
+  .historico .codigos button:hover { color: var(--sobre-ciano); background: var(--ciano); }
+  .historico .obs { margin: 8px 0 0; color: var(--tinta-suave); font-size: 0.85rem; }
+  .nota { font-size: 0.9rem; color: #cfe4f7; margin: 0 0 16px; }
+  .nota strong { color: var(--tinta); }
+
+  /* barra de rolagem fina, arredondada e na cor do tema */
+  ::-webkit-scrollbar { width: 14px; height: 14px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb {
+    background-color: #1e5583;
+    background-clip: padding-box;
+    border: 4px solid transparent;
+    border-radius: 10px;
+  }
+  ::-webkit-scrollbar-thumb:hover { background-color: #14b8ff; }
+  ::-webkit-scrollbar-corner { background: transparent; }
+
+  @media (max-width: 520px) {
+    .linha { flex-direction: column; gap: 0; }
+    .busca { flex-direction: column; align-items: stretch; }
+  }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7"/></symbol>
+    <symbol id="i-cpf" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="11" r="2"/><path d="M6 16c.6-1.6 1.8-2.4 3-2.4s2.4.8 3 2.4M15 10h3M15 14h3"/></symbol>
+    <symbol id="i-lista" viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01"/></symbol>
+    <symbol id="i-matricula" viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M9 8h6M9 12h6M9 16h3"/></symbol>
+    <symbol id="i-carencia" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/></symbol>
+    <symbol id="i-relogio" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+    <symbol id="i-pessoas" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6M16 5a3.5 3.5 0 010 7M18 14c2.2.6 3.5 2.4 3.5 5"/></symbol>
+    <symbol id="i-caneta" viewBox="0 0 24 24"><path d="M4 20l1-4L16 5l3 3L8 19z"/><path d="M14 7l3 3"/></symbol>
+    <symbol id="i-busca" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></symbol>
+    <symbol id="i-salvar" viewBox="0 0 24 24"><path d="M5 3h11l4 4v14H5z"/><path d="M8 3v6h8V3M8 21v-7h8v7"/></symbol>
+  </defs>
+</svg>
+
+<main>
+  <div class="topo">
+    <svg class="logo" viewBox="0 0 40 40" aria-hidden="true">
+      <path d="M7 25 19 6h8L15 25z" fill="#14b8ff"/>
+      <path d="M17 35 29 16h7L24 35z" fill="#0a7fe8"/>
+      <path d="M5 35 12 24h6L11 35z" fill="#14b8ff" opacity=".7"/>
+    </svg>
+    <nav class="nav">
+      <a class="btn-nav" href="/">Cadastro de admissão</a>
+      <a class="btn-nav ativo" href="/substituicao.html">Substituição</a>
+      <a class="btn-nav" href="/configuracao.html">Configurações</a>
+    </nav>
+  </div>
+  <h1>Substituição no SIRAC</h1>
+  <p class="sub">Digite o código da carência. O programa lê o EducaDF e, se houver titular, busca CPF e matrícula dele no SIGEP.</p>
+
+  <section>
+    <h2>1. Carência</h2>
+    <div class="busca">
+      <div>
+        <label for="codigo" style="margin-top:0"><svg class="ico" aria-hidden="true"><use href="#i-carencia"/></svg>Código da carência</label>
+        <input id="codigo" inputmode="numeric" placeholder="ex.: 35885" autofocus>
+      </div>
+      <button id="btnBuscar"><svg class="ico" aria-hidden="true"><use href="#i-busca"/></svg>Buscar dados</button>
+    </div>
+    <div id="msgBusca"></div>
+
+    <div id="historico" class="historico" hidden></div>
+  </section>
+
+  <section id="dados" class="oculto">
+    <h2>2. Confira os dados</h2>
+
+    <label for="temTitular" style="margin-top:0"><svg class="ico" aria-hidden="true"><use href="#i-pessoas"/></svg>Tem professor titular?</label>
+    <select id="temTitular">
+      <option value="sim">Sim (Abertura da Turma = Não)</option>
+      <option value="nao">Não (Abertura da Turma = Sim)</option>
+    </select>
+
+    <div id="blocoTitular">
+      <label for="nome"><svg class="ico" aria-hidden="true"><use href="#i-user"/></svg>Nome do titular</label>
+      <input id="nome">
+      <div class="linha">
+        <div>
+          <label for="cpf"><svg class="ico" aria-hidden="true"><use href="#i-cpf"/></svg>CPF do titular</label>
+          <input id="cpf" inputmode="numeric" placeholder="000.000.000-00">
+        </div>
+        <div>
+          <label for="matricula"><svg class="ico" aria-hidden="true"><use href="#i-matricula"/></svg>Matrícula do titular</label>
+          <input id="matricula" inputmode="numeric">
+        </div>
+      </div>
+    </div>
+
+    <div class="linha">
+      <div>
+        <label for="turno"><svg class="ico" aria-hidden="true"><use href="#i-relogio"/></svg>Turno</label>
+        <input id="turno" placeholder="Matutino, Vespertino...">
+      </div>
+      <div>
+        <label for="cargaHoraria"><svg class="ico" aria-hidden="true"><use href="#i-lista"/></svg>Carga horária (horas)</label>
+        <input id="cargaHoraria" inputmode="numeric" placeholder="ex.: 30">
+      </div>
+    </div>
+
+    <div class="linha">
+      <div>
+        <label for="dataInicio"><svg class="ico" aria-hidden="true"><use href="#i-caneta"/></svg>Data de início <span style="font-weight:400;color:var(--tinta-suave)">(início do período)</span></label>
+        <input id="dataInicio" type="date">
+      </div>
+      <div>
+        <label for="dataFim"><svg class="ico" aria-hidden="true"><use href="#i-relogio"/></svg>Data de fim <span style="font-weight:400;color:var(--tinta-suave)">(fim do período)</span></label>
+        <input id="dataFim" type="date">
+      </div>
+    </div>
+
+    <details id="detalhes" class="oculto">
+      <summary>O que li em "Horários da Carência"</summary>
+      <p id="textoHorarios"></p>
+    </details>
+
+    <div id="avisos"></div>
+  </section>
+
+  <section id="envio" class="oculto">
+    <h2>3. SIRAC</h2>
+    <p class="nota">Clique aqui <strong>depois de salvar</strong> o cadastro da admissão. O programa abre a aba Substituição na janela do SIRAC e preenche. As datas (lidas do Período da carência), a escolha final e o botão <strong>Adicionar</strong> são com você.</p>
+    <button id="btnPreencher"><svg class="ico" aria-hidden="true"><use href="#i-salvar"/></svg>Preencher no SIRAC</button>
+    <div id="msgEnvio"></div>
+  </section>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+
+function caixa(destino, tipo, titulo, itens) {
+  const el = $(destino);
+  el.innerHTML = '';
+  if (!titulo && !(itens && itens.length)) return;
+  const div = document.createElement('div');
+  div.className = 'msg ' + tipo;
+  if (titulo) div.append(document.createTextNode(titulo));
+  if (itens && itens.length) {
+    const ul = document.createElement('ul');
+    for (const t of itens) {
+      const li = document.createElement('li');
+      li.textContent = t;
+      ul.append(li);
+    }
+    div.append(ul);
+  }
+  el.append(div);
+}
+
+// Carências do ano que o cadastro de admissão achou no Histórico de convocações (guardadas por aquela tela).
+// Clicar num código coloca ele no campo "Código da carência".
+function mostrarHistorico() {
+  const caixa = $('historico');
+  let h = null;
+  try { h = JSON.parse(localStorage.getItem('historicoCarencias') || 'null'); } catch {}
+  if (!h || !(h.codigos || []).length) { caixa.hidden = true; return; }
+
+  caixa.innerHTML = '';
+  const titulo = document.createElement('div');
+  titulo.className = 'titulo';
+  const n = document.createElement('strong');
+  n.textContent = h.total ?? h.codigos.length;
+  titulo.append(
+    n,
+    document.createTextNode(` ${h.total === 1 ? 'carência' : 'carências'} em ${h.ano}${h.nome ? ` · ${h.nome}` : ''} (do cadastro de admissão)`)
+  );
+  caixa.append(titulo);
+
+  const lista = document.createElement('div');
+  lista.className = 'codigos';
+  for (const c of h.codigos) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = c.codigo + (c.origem && c.origem !== 'EducaDF' ? ` (${c.origem})` : '') + (c.status ? ` · ${c.status}` : '');
+    b.title = 'Usar este código no campo "Código da carência"';
+    b.addEventListener('click', () => { $('codigo').value = c.codigo; $('codigo').focus(); });
+    lista.append(b);
+  }
+  caixa.append(lista);
+
+  const p = document.createElement('p');
+  p.className = 'obs';
+  p.textContent = 'Clique num código e depois em "Buscar dados".';
+  caixa.append(p);
+  caixa.hidden = false;
+}
+mostrarHistorico();
+
+function mostrarBloco() {
+  $('blocoTitular').classList.toggle('oculto', $('temTitular').value !== 'sim');
+}
+$('temTitular').addEventListener('change', mostrarBloco);
+$('codigo').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('btnBuscar').click(); });
+
+$('btnBuscar').addEventListener('click', async () => {
+  const codigo = $('codigo').value.replace(/\D/g, '');
+  if (!codigo) return caixa('msgBusca', 'erro', 'Informe o código da carência.');
+
+  $('btnBuscar').disabled = true;
+  caixa('msgBusca', 'aviso', 'Buscando... acompanhe na janela do navegador (se o SIGEP pedir, marque "Não sou um robô" e clique em Entrar).');
+  try {
+    const r = await fetch('/substituicao/buscar', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ codigo }),
+    }).then((x) => x.json());
+
+    if (!r.ok) return caixa('msgBusca', 'erro', r.erro || 'Não consegui buscar.');
+
+    $('temTitular').value = r.temTitular ? 'sim' : 'nao';
+    $('nome').value = r.nome || '';
+    $('cpf').value = r.cpf || '';
+    $('matricula').value = r.matricula || '';
+    $('turno').value = r.turno || '';
+    $('cargaHoraria').value = r.cargaHoraria || '';
+    $('dataInicio').value = r.dataInicio || '';
+    $('dataFim').value = r.dataFim || '';
+    mostrarBloco();
+
+    $('textoHorarios').textContent = r.textoHorarios || '(nada lido)';
+    $('detalhes').classList.toggle('oculto', !r.textoHorarios && !(r.avisos || []).length);
+
+    const todos = [...(r.avisos || []), ...(r.notas || [])];
+    caixa('avisos', todos.length ? 'aviso' : 'ok', todos.length ? 'Confira antes de preencher:' : 'Dados lidos.', todos);
+    caixa('msgBusca', 'ok', `Carência ${r.codigo}: ${r.temTitular ? 'com titular' : 'sem titular'}.`);
+
+    $('dados').classList.remove('oculto');
+    $('envio').classList.remove('oculto');
+    caixa('msgEnvio', '', '');
+  } catch (e) {
+    caixa('msgBusca', 'erro', 'Erro de comunicação com o programa: ' + e.message);
+  } finally {
+    $('btnBuscar').disabled = false;
+  }
+});
+
+$('btnPreencher').addEventListener('click', async () => {
+  $('btnPreencher').disabled = true;
+  caixa('msgEnvio', 'aviso', 'Preenchendo na janela do SIRAC...');
+  try {
+    const r = await fetch('/substituicao/preencher', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        temTitular: $('temTitular').value === 'sim',
+        nome: $('nome').value,
+        cpf: $('cpf').value,
+        matricula: $('matricula').value,
+        turno: $('turno').value,
+        cargaHoraria: $('cargaHoraria').value,
+        dataInicio: $('dataInicio').value,
+        dataFim: $('dataFim').value,
+      }),
+    }).then((x) => x.json());
+
+    if (!r.ok) return caixa('msgEnvio', 'erro', r.erro || 'Não consegui preencher.');
+
+    const falta = [];
+    if ($('temTitular').value === 'sim') falta.push('Motivo da Carência');
+    else falta.push('Especialidade');
+    falta.push('Clicar em Adicionar');
+
+    if (r.pendencias && r.pendencias.length) {
+      caixa('msgEnvio', 'aviso', 'Preenchi o que deu. Complete à mão na janela do SIRAC:', [...r.pendencias, ...falta]);
+    } else {
+      caixa('msgEnvio', 'ok', 'Preenchido. Falta à mão na janela do SIRAC:', falta);
+    }
+  } catch (e) {
+    caixa('msgEnvio', 'erro', 'Erro de comunicação com o programa: ' + e.message);
+  } finally {
+    $('btnPreencher').disabled = false;
+  }
+});
+</script>
+</body>
+</html>

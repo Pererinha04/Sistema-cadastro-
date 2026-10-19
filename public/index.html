@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Preencher admissão no SIRAC</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --fundo: #07111f;
+      --fundo-2: #0a1a2e;
+      --painel: #0b1829;
+      --campo: #09162a;
+      --borda-painel: #1a4a73;
+      --borda: #1e5583;
+      --tinta: #e8f3ff;
+      --tinta-suave: #8fb0cc;
+      --placeholder: #6384a0;
+      --ciano: #14b8ff;
+      --ciano-escuro: #0c9fe0;
+      --sobre-ciano: #03121f;
+      --info-fundo: #0c2740;
+      --info-borda: #1b5a8c;
+      --erro: #ff8d8d;
+      --erro-borda: #d95757;
+      --erro-fundo: #2b1217;
+      --ok: #86e6b8;
+      --ok-fundo: #0e2f26;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: radial-gradient(1200px 600px at 50% -10%, #0f2a47 0%, var(--fundo) 60%);
+      background-color: var(--fundo);
+      color: var(--tinta);
+      font-family: "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+      line-height: 1.5;
+      display: flex;
+      justify-content: center;
+      padding: 24px 16px 40px;
+    }
+
+    main { width: 100%; max-width: 600px; }
+
+    /* barra do topo */
+    .topo {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+    .logo { width: 44px; height: 44px; display: block; }
+    .avatar {
+      width: 34px;
+      height: 34px;
+      display: grid;
+      place-items: center;
+      color: var(--tinta-suave);
+      border: 1.5px solid var(--borda);
+      border-radius: 50%;
+    }
+    .avatar .ico { width: 18px; height: 18px; }
+
+    /* botões de navegação */
+    .nav { display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
+    .btn-nav {
+      display: inline-flex;
+      align-items: center;
+      height: 38px;
+      padding: 0 16px;
+      font: inherit;
+      font-size: 0.9rem;
+      font-weight: 650;
+      text-decoration: none;
+      color: var(--ciano);
+      background: transparent;
+      border: 1px solid var(--ciano);
+      border-radius: 6px;
+    }
+    .btn-nav:hover, .btn-nav.ativo { color: var(--sobre-ciano); background: var(--ciano); }
+    .btn-nav:focus-visible { outline: 2px solid var(--ciano); outline-offset: 2px; }
+
+    h1 {
+      margin: 0 0 6px;
+      font-size: 1.55rem;
+      font-weight: 650;
+      letter-spacing: -0.01em;
+    }
+
+    .sub { margin: 0 0 20px; color: var(--ciano); opacity: 0.85; font-size: 0.95rem; }
+
+    form {
+      background: linear-gradient(180deg, var(--fundo-2), var(--painel));
+      border: 1px solid var(--borda-painel);
+      border-radius: 10px;
+      padding: 22px;
+    }
+
+    .grade {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 18px 20px;
+      align-items: start;
+    }
+    .inteira { grid-column: 1 / -1; }
+
+    label, legend {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 8px;
+      padding: 0;
+      font-size: 0.92rem;
+      font-weight: 650;
+    }
+    .ico {
+      width: 17px;
+      height: 17px;
+      flex: none;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 1.8;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+    label .ico, legend .ico { color: var(--ciano); }
+
+    /* rótulos de duas linhas: mantêm os dois campos de data alinhados */
+    label.duplo { align-items: flex-start; min-height: 68px; }
+    label.duplo .ico { margin-top: 3px; }
+
+    [hidden] { display: none !important; }
+    .historico { padding: 12px 14px; background: var(--info-fundo); border: 1px solid var(--info-borda); border-radius: 6px; font-size: 0.92rem; }
+    .historico .total { font-size: 1.05rem; }
+    .historico .total strong { color: var(--ciano); font-size: 1.25rem; }
+    .historico .codigos { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+    .historico .codigos button { height: 32px; padding: 0 12px; margin: 0; font-size: 0.88rem; color: var(--ciano); background: transparent; border: 1px solid var(--ciano); border-radius: 999px; cursor: pointer; }
+    .historico .codigos button:hover { color: var(--sobre-ciano); background: var(--ciano); }
+    .historico .obs { margin: 8px 0 0; color: var(--tinta-suave); font-size: 0.85rem; }
+    .historico details { margin-top: 8px; color: var(--tinta-suave); font-size: 0.85rem; }
+    .origem { font-weight: 400; color: var(--tinta-suave); font-size: 0.85rem; }
+
+    input[type="text"],
+    input[type="date"] {
+      width: 100%;
+      height: 46px;
+      padding: 0 14px;
+      font: inherit;
+      color: var(--tinta);
+      background: var(--campo);
+      border: 1px solid var(--borda);
+      border-radius: 6px;
+    }
+    input::placeholder { color: var(--placeholder); }
+    input[type="date"] { color-scheme: dark; }
+    input[type="date"]:invalid, input[type="date"]:not(:focus):not([value]) { color: var(--tinta); }
+
+    input:focus-visible,
+    button:focus-visible {
+      outline: 2px solid var(--ciano);
+      outline-offset: 2px;
+    }
+
+    fieldset { margin: 0; padding: 0; border: 0; min-width: 0; }
+
+    /* Sexo: dois cartões de escolha */
+    .opcoes { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    .escolha { position: relative; display: block; margin: 0; font-weight: 400; cursor: pointer; }
+    .escolha input {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      opacity: 0;
+      cursor: pointer;
+    }
+    .cartao {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      height: 46px;
+      padding: 0 14px;
+      color: var(--tinta);
+      background: var(--campo);
+      border: 1px solid var(--borda);
+      border-radius: 6px;
+    }
+    .bolinha {
+      width: 18px;
+      height: 18px;
+      flex: none;
+      border: 2px solid var(--tinta-suave);
+      border-radius: 50%;
+    }
+    .escolha input:checked + .cartao { border-color: var(--ciano); box-shadow: 0 0 0 1px var(--ciano) inset; font-weight: 650; }
+    .escolha input:checked + .cartao .bolinha { border-color: var(--ciano); background: radial-gradient(circle, var(--ciano) 0 4px, transparent 5px); }
+    .escolha input:focus-visible + .cartao { outline: 2px solid var(--ciano); outline-offset: 2px; }
+
+    .fixos {
+      display: flex;
+      gap: 12px;
+      margin: 22px 0 0;
+      padding: 14px 16px;
+      font-size: 0.9rem;
+      color: #cfe4f7;
+      background: var(--info-fundo);
+      border: 1px solid var(--info-borda);
+      border-radius: 8px;
+    }
+    .fixos .ico { width: 20px; height: 20px; margin-top: 2px; color: var(--ciano); }
+
+    button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      height: 46px;
+      margin-top: 20px;
+      padding: 0 20px;
+      font: inherit;
+      font-weight: 650;
+      color: var(--sobre-ciano);
+      background: var(--ciano);
+      border: 1px solid var(--ciano);
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    button:hover { background: var(--ciano-escuro); border-color: var(--ciano-escuro); }
+    button:disabled { opacity: 0.55; cursor: progress; }
+    button[hidden] { display: none; }
+
+    #enviar { width: 100%; }
+
+    .busca-cpf button { width: 100%; margin-top: 12px; }
+    .cpf-linha { display: flex; gap: 12px; }
+    .cpf-linha button { margin-top: 0; white-space: nowrap; }
+
+    button.secundario {
+      color: var(--ciano);
+      background: transparent;
+      border: 1px solid var(--ciano);
+    }
+    button.secundario:hover { color: var(--sobre-ciano); background: var(--ciano); }
+
+    button.cancelar {
+      width: 100%;
+      color: var(--erro);
+      background: transparent;
+      border: 1px solid var(--erro-borda);
+    }
+    button.cancelar:hover { color: #fff; background: var(--erro-borda); }
+
+    #status {
+      margin-top: 16px;
+      padding: 12px 14px;
+      border-radius: 6px;
+      font-size: 0.95rem;
+      border: 1px solid transparent;
+    }
+    #status:empty { display: none; }
+    #status.ok { background: var(--ok-fundo); color: var(--ok); border-color: #1f6a4f; }
+    #status.erro { background: var(--erro-fundo); color: var(--erro); border-color: #6b2a31; }
+
+    /* barra de rolagem fina, arredondada e na cor do tema */
+    ::-webkit-scrollbar { width: 14px; height: 14px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb {
+      background-color: #1e5583;
+      background-clip: padding-box;
+      border: 4px solid transparent;
+      border-radius: 10px;
+    }
+    ::-webkit-scrollbar-thumb:hover { background-color: #14b8ff; }
+    ::-webkit-scrollbar-corner { background: transparent; }
+
+    @media (max-width: 520px) {
+      .grade, .opcoes { grid-template-columns: 1fr; }
+      .cpf-linha { flex-direction: column; gap: 0; }
+      .cpf-linha button { margin-top: 12px; }
+    }
+  </style>
+</head>
+<body>
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <defs>
+      <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7"/></symbol>
+      <symbol id="i-cpf" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="11" r="2"/><path d="M6 16c.6-1.6 1.8-2.4 3-2.4s2.4.8 3 2.4M15 10h3M15 14h3"/></symbol>
+      <symbol id="i-lista" viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01"/></symbol>
+      <symbol id="i-matricula" viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M9 8h6M9 12h6M9 16h3"/></symbol>
+      <symbol id="i-calendario" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></symbol>
+      <symbol id="i-carencia" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/></symbol>
+      <symbol id="i-caneta" viewBox="0 0 24 24"><path d="M4 20l1-4L16 5l3 3L8 19z"/><path d="M14 7l3 3"/></symbol>
+      <symbol id="i-relogio" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+      <symbol id="i-pessoas" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6M16 5a3.5 3.5 0 010 7M18 14c2.2.6 3.5 2.4 3.5 5"/></symbol>
+      <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5h.01"/></symbol>
+      <symbol id="i-busca" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></symbol>
+      <symbol id="i-salvar" viewBox="0 0 24 24"><path d="M5 3h11l4 4v14H5z"/><path d="M8 3v6h8V3M8 21v-7h8v7"/></symbol>
+    </defs>
+  </svg>
+
+  <main>
+    <div class="topo">
+      <svg class="logo" viewBox="0 0 40 40" aria-hidden="true">
+        <path d="M7 25 19 6h8L15 25z" fill="#14b8ff"/>
+        <path d="M17 35 29 16h7L24 35z" fill="#0a7fe8"/>
+        <path d="M5 35 12 24h6L11 35z" fill="#14b8ff" opacity=".7"/>
+      </svg>
+      <nav class="nav">
+        <a class="btn-nav ativo" href="/">Cadastro de admissão</a>
+        <a class="btn-nav" href="/substituicao.html">Substituição</a>
+        <a class="btn-nav" href="/configuracao.html">Configurações</a>
+      </nav>
+    </div>
+
+    <h1>Preencher admissão no SIRAC</h1>
+    <p class="sub">Digite o CPF e clique em "Buscar dados". O programa lê o EducaDF e o SIGEP. Confira os campos, escolha o sexo e clique em "Preencher no SIRAC"; depois você confere lá e salva.</p>
+
+    <form id="form" novalidate>
+      <div class="grade">
+        <div class="inteira">
+          <label for="nome"><svg class="ico" aria-hidden="true"><use href="#i-user"/></svg>Nome completo <span class="origem">(EduDF)</span></label>
+          <input id="nome" name="nome" type="text" autocomplete="off" placeholder="Digite o nome completo" required>
+        </div>
+
+        <div class="busca-cpf">
+          <label for="cpf"><svg class="ico" aria-hidden="true"><use href="#i-cpf"/></svg>CPF <span class="origem">(EduDF)</span></label>
+          <input id="cpf" name="cpf" type="text" inputmode="numeric" maxlength="14" autocomplete="off" placeholder="000.000.000-00" required>
+          <button type="button" id="buscar"><svg class="ico" aria-hidden="true"><use href="#i-busca"/></svg>Buscar dados</button>
+        </div>
+
+        <div>
+          <label for="classificacao"><svg class="ico" aria-hidden="true"><use href="#i-lista"/></svg>Classificação <span class="origem">(EduDF)</span></label>
+          <input id="classificacao" name="classificacao" type="text" inputmode="numeric" autocomplete="off" placeholder="Ex.: 801" required>
+        </div>
+
+        <div>
+          <label for="matricula"><svg class="ico" aria-hidden="true"><use href="#i-matricula"/></svg>Matrícula <span class="origem">(SIGEP)</span></label>
+          <input id="matricula" name="matricula" type="text" inputmode="numeric" autocomplete="off" list="matriculas" placeholder="Digite a matrícula" required>
+          <datalist id="matriculas"></datalist>
+        </div>
+
+        <div>
+          <label for="dataNascimento"><svg class="ico" aria-hidden="true"><use href="#i-calendario"/></svg>Data de nascimento <span class="origem">(SIGEP)</span></label>
+          <input id="dataNascimento" name="dataNascimento" type="date" required>
+        </div>
+
+        <div class="inteira">
+          <label for="codigoCarencia"><svg class="ico" aria-hidden="true"><use href="#i-carencia"/></svg>Código da carência <span class="origem">(EduDF, Gestão de Carência)</span></label>
+          <div class="cpf-linha">
+            <input id="codigoCarencia" name="codigoCarencia" type="text" inputmode="numeric" autocomplete="off" placeholder="Digite o código da carência">
+            <button type="button" id="buscarDatas" class="secundario">Buscar datas</button>
+          </div>
+        </div>
+
+        <div class="inteira" id="blocoHistorico" hidden>
+          <label><svg class="ico" aria-hidden="true"><use href="#i-carencia"/></svg>Carências no ano <span class="origem">(EduDF, Histórico de convocações)</span></label>
+          <div class="historico" id="historico"></div>
+        </div>
+
+        <div>
+          <label class="duplo" for="dataAssinatura"><svg class="ico" aria-hidden="true"><use href="#i-caneta"/></svg><span>Data de assinatura do contrato<br><span class="origem">(início do período)</span></span></label>
+          <input id="dataAssinatura" name="dataAssinatura" type="date">
+        </div>
+
+        <div>
+          <label class="duplo" for="dataTermino"><svg class="ico" aria-hidden="true"><use href="#i-relogio"/></svg><span>Data de término do contrato<br><span class="origem">(fim do período)</span></span></label>
+          <input id="dataTermino" name="dataTermino" type="date">
+        </div>
+
+        <fieldset class="inteira">
+          <legend><svg class="ico" aria-hidden="true"><use href="#i-pessoas"/></svg>Sexo</legend>
+          <div class="opcoes">
+            <label class="escolha"><input type="radio" name="sexo" value="Masculino" required><span class="cartao"><span class="bolinha"></span>Masculino</span></label>
+            <label class="escolha"><input type="radio" name="sexo" value="Feminino"><span class="cartao"><span class="bolinha"></span>Feminino</span></label>
+          </div>
+        </fieldset>
+      </div>
+
+      <p class="fixos">
+        <svg class="ico" aria-hidden="true"><use href="#i-info"/></svg>
+        <span>Já definidos pelo programa: nacionalidade brasileiro nato, escolaridade superior completo,
+        aptidão apto, quitação eleitoral sim, declaração de bens sim, acumulação não e sub judice não.</span>
+      </p>
+
+      <button type="submit" id="enviar"><svg class="ico" aria-hidden="true"><use href="#i-salvar"/></svg>Preencher no SIRAC</button>
+      <button type="button" id="cancelar" class="cancelar" hidden>Cancelar busca</button>
+      <div id="status" role="status" aria-live="polite"></div>
+    </form>
+  </main>
+
+  <script>
+    const form = document.getElementById('form');
+    const botao = document.getElementById('enviar');
+    const status = document.getElementById('status');
+    const cpf = document.getElementById('cpf');
+
+    // Formata o CPF enquanto digita: 000.000.000-00
+    cpf.addEventListener('input', () => {
+      const d = cpf.value.replace(/\D/g, '').slice(0, 11);
+      cpf.value = d
+        .replace(/^(\d{3})(\d)/, '$1.$2')
+        .replace(/^(\d{3})\.(\d{3})(\d)/, '$1.$2.$3')
+        .replace(/^(\d{3})\.(\d{3})\.(\d{3})(\d)/, '$1.$2.$3-$4');
+    });
+
+    // Mostra quantas carências a pessoa passou no ano e os códigos (clicar no código o coloca no campo da carência).
+    function mostrarHistorico(h, nomePessoa) {
+      // Guarda para a tela de Substituição mostrar os mesmos códigos (mesmo endereço, mesmo armazenamento).
+      if (h) {
+        try {
+          localStorage.setItem('historicoCarencias', JSON.stringify({
+            nome: nomePessoa || '',
+            ano: h.ano,
+            total: h.total,
+            codigos: h.codigos || [],
+          }));
+        } catch {}
+      }
+      const bloco = document.getElementById('blocoHistorico');
+      const caixa = document.getElementById('historico');
+      caixa.innerHTML = '';
+      bloco.hidden = !h;
+      if (!h) return;
+
+      const total = document.createElement('div');
+      total.className = 'total';
+      if (h.total === null || h.total === undefined) {
+        total.textContent = `Não consegui contar as carências de ${h.ano}.`;
+      } else {
+        const n = document.createElement('strong');
+        n.textContent = h.total;
+        total.append(n, document.createTextNode(h.total === 1 ? ` carência em ${h.ano}` : ` carências em ${h.ano}`));
+      }
+      caixa.append(total);
+
+      if (h.codigos && h.codigos.length) {
+        const lista = document.createElement('div');
+        lista.className = 'codigos';
+        for (const c of h.codigos) {
+          const b = document.createElement('button');
+          b.type = 'button';
+          b.textContent = c.codigo + (c.origem && c.origem !== 'EducaDF' ? ` (${c.origem})` : '') + (c.status ? ` · ${c.status}` : '');
+          b.title = 'Usar este código no campo "Código da carência"';
+          b.addEventListener('click', () => { codigoCarencia.value = c.codigo; });
+          lista.append(b);
+        }
+        caixa.append(lista);
+      }
+      for (const a of h.avisos || []) {
+        const p = document.createElement('p');
+        p.className = 'obs';
+        p.textContent = a;
+        caixa.append(p);
+      }
+      if (h.texto) {
+        const d = document.createElement('details');
+        const s = document.createElement('summary');
+        s.textContent = 'O que li no histórico';
+        const p = document.createElement('p');
+        p.textContent = h.texto;
+        d.append(s, p);
+        caixa.append(d);
+      }
+    }
+
+    function mostrar(texto, tipo) {
+      status.textContent = texto;
+      status.className = tipo || '';
+    }
+
+    const botaoBuscar = document.getElementById('buscar');
+    const botaoDatas = document.getElementById('buscarDatas');
+    const listaMatriculas = document.getElementById('matriculas');
+    const codigoCarencia = document.getElementById('codigoCarencia');
+
+    const botaoCancelar = document.getElementById('cancelar');
+    let controle = null;
+
+    // Durante uma busca: trava os botões e mostra "Cancelar busca".
+    function travar(sim) {
+      botaoBuscar.disabled = sim;
+      botaoDatas.disabled = sim;
+      botao.disabled = sim;
+      botaoCancelar.hidden = !sim;
+    }
+
+    // Avisa o servidor para parar a busca e solta a tela na hora.
+    botaoCancelar.addEventListener('click', () => {
+      fetch('/cancelar', { method: 'POST' }).catch(() => {});
+      if (controle) controle.abort();
+    });
+
+    botaoBuscar.addEventListener('click', async () => {
+      if (cpf.value.replace(/\D/g, '').length !== 11) return mostrar('Digite o CPF com 11 dígitos.', 'erro');
+
+      travar(true);
+      mostrarHistorico(null);
+      mostrar('Buscando no EducaDF e no SIGEP… No SIGEP, marque "Não sou um robô" e clique em Entrar na janela que abriu.');
+
+      try {
+        controle = new AbortController();
+        const resposta = await fetch('/buscar', {
+          signal: controle.signal,
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ cpf: cpf.value }),
+        });
+        const r = await resposta.json();
+        if (r.cancelado) return mostrar('Busca cancelada.');
+        if (!r.ok) return mostrar(r.erro || 'Não foi possível buscar.', 'erro');
+
+        // Só preenche o que veio; o resto fica em branco para digitar.
+        if (r.nome) document.getElementById('nome').value = r.nome;
+        if (r.classificacao) document.getElementById('classificacao').value = r.classificacao;
+        if (r.dataNascimento) document.getElementById('dataNascimento').value = r.dataNascimento;
+        // O código da carência lido no Banco de Aprovado já vai para o campo (você pode trocar).
+        if (r.carencia) codigoCarencia.value = r.carencia;
+
+        mostrarHistorico(r.historico, r.nome);
+
+        // Mais de uma matrícula (mais de um vínculo): você escolhe, o programa não decide.
+        const matricula = document.getElementById('matricula');
+        listaMatriculas.innerHTML = '';
+        r.matriculas.forEach((m) => {
+          const o = document.createElement('option');
+          o.value = m;
+          listaMatriculas.appendChild(o);
+        });
+        matricula.value = r.matriculas.length === 1 ? r.matriculas[0] : '';
+
+        const notas = [];
+        if (r.matriculas.length > 1) notas.push('O SIGEP tem mais de uma matrícula: escolha na lista do campo Matrícula.');
+        if (r.situacao && r.situacao.toLowerCase() !== 'normal') notas.push(`Situação no EducaDF: ${r.situacao}.`);
+        notas.push(...r.avisos);
+        if (r.notas) notas.push(...r.notas);
+
+        if (r.avisos.length) {
+          mostrar(`Busca incompleta. ${notas.join(' ')} Complete os campos em branco à mão.`, 'erro');
+        } else {
+          mostrar(`Dados carregados. ${notas.join(' ')} Escolha o sexo e confira tudo.`, 'ok');
+        }
+      } catch (err) {
+        if (err.name === 'AbortError') mostrar('Busca cancelada.');
+        else mostrar('Não consegui falar com o servidor. Ele está rodando (npm start)?', 'erro');
+      } finally {
+        travar(false);
+      }
+    });
+
+    // Busca o Período da carência no EducaDF (Gestão de Carência) e preenche as duas datas.
+    botaoDatas.addEventListener('click', async () => {
+      const codigo = codigoCarencia.value.replace(/\D/g, '');
+      if (!codigo) return mostrar('Digite o código da carência.', 'erro');
+
+      travar(true);
+      mostrar('Abrindo a Gestão de Carência no EducaDF e lendo o período…');
+
+      try {
+        controle = new AbortController();
+        const resposta = await fetch('/carencia/datas', {
+          signal: controle.signal,
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ codigo }),
+        });
+        const r = await resposta.json();
+        if (r.cancelado) return mostrar('Busca cancelada.');
+        if (!r.ok) return mostrar(r.erro || 'Não foi possível buscar as datas.', 'erro');
+
+        document.getElementById('dataAssinatura').value = r.dataInicio || '';
+        document.getElementById('dataTermino').value = r.dataFim || '';
+
+        if (r.avisos.length) mostrar(r.avisos.join(' '), 'erro');
+        else mostrar(`Período lido no EducaDF: ${r.periodo}. Confira as datas.`, 'ok');
+      } catch (err) {
+        if (err.name === 'AbortError') mostrar('Busca cancelada.');
+        else mostrar('Não consegui falar com o servidor. Ele está rodando (npm start)?', 'erro');
+      } finally {
+        travar(false);
+      }
+    });
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+
+      const dados = Object.fromEntries(new FormData(form));
+      if (!dados.sexo) return mostrar('Escolha o sexo.', 'erro');
+
+      botao.disabled = true;
+      mostrar('Abrindo o SIRAC e preenchendo os campos…');
+
+      try {
+        const resposta = await fetch('/preencher', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(dados),
+        });
+        const resultado = await resposta.json();
+
+        if (resultado.ok) {
+          mostrar('Campos preenchidos. Confira no SIRAC e clique em Salvar.', 'ok');
+          form.reset(); // não deixa dados pessoais na tela
+        } else {
+          mostrar(resultado.erro || 'Não foi possível preencher. Veja o terminal.', 'erro');
+        }
+      } catch (err) {
+        mostrar('Não consegui falar com o servidor. Ele está rodando (npm start)?', 'erro');
+      } finally {
+        botao.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>

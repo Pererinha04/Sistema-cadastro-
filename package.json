@@ -1,0 +1,62 @@
+{
+  "name": "sistema-cadastro",
+  "version": "1.5.0",
+  "description": "Preenche o formulário de Admissão do SIRAC a partir de um formulário local",
+  "main": "main.js",
+  "author": "Seu Nome",
+  "license": "ISC",
+  "scripts": {
+    "start": "electron .",
+    "servidor": "node server.js",
+    "dist": "electron-builder",
+    "codegen": "playwright codegen https://sirac-adm.tc.df.gov.br"
+  },
+  "dependencies": {
+    "express": "^5.3.0",
+    "playwright": "^1.64.0"
+  },
+  "build": {
+    "appId": "br.sistemacadastro.app",
+    "productName": "Sistema Cadastro",
+    "directories": {
+      "output": "C:/Users/User/build-sistema-cadastro"
+    },
+    "files": [
+      "main.js",
+      "server.js",
+      "sirac.js",
+      "sigep.js",
+      "edudf.js",
+      "carencia.js",
+      "substituicao.js",
+      "navegador.js",
+      "login.js",
+      "config.js",
+      "cancelamento.js",
+      "icon.ico",
+      "public/**/*",
+      "package.json"
+    ],
+    "asarUnpack": [
+      "node_modules/playwright/**",
+      "node_modules/playwright-core/**"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "installerIcon": "icon.ico",
+      "uninstallerIcon": "icon.ico",
+      "installerHeaderIcon": "icon.ico"
+    }
+  },
+  "devDependencies": {
+    "electron": "^44.7.1",
+    "electron-builder": "^26.15.3"
+  }
+}

@@ -1,0 +1,6 @@
+node_modules/
+.env
+perfil-chrome/
+perfil-sirac/
+dist/
+log.txt
