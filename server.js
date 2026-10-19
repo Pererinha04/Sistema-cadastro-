@@ -145,6 +145,7 @@ app.post('/buscar', async (req, res) => {
     const s = await buscarNoSigep(cpf);
     Object.assign(resultado, { matriculas: s.matriculas, dataNascimento: s.dataNascimento });
     if (s.aviso) resultado.avisos.push(s.aviso);
+    if (s.nota) resultado.notas.push(s.nota);
   } catch (err) {
     if (cancelamento.cancelado()) return res.json({ ok: false, cancelado: true, erro: 'Busca cancelada.' });
     console.error('SIGEP:', err.message);

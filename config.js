@@ -66,6 +66,8 @@ module.exports = {
     especialidadeComTitular: 'Atividades',
     // Textos que aparecem ao lado dos campos de data na aba Substituição do SIRAC.
     // O programa tenta cada um, na ordem. CONFIRE olhando a tela e ajuste/acrescente se for diferente.
+    // Textos possíveis do campo Carga Horária na aba Substituição (tenta na ordem).
+    rotulosCarga: ['Carga Horária', 'Carga Horária Semanal', 'Carga Horária (h)', 'Carga Horária (horas)', 'C.H.'],
     rotulosDatas: {
       inicio: ['Data de Início', 'Data Início', 'Início da Carência', 'Data Inicial', 'Início'],
       fim: ['Data de Término', 'Data Término', 'Data de Fim', 'Data Fim', 'Término da Carência', 'Data Final', 'Término', 'Fim'],

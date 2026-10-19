@@ -65,7 +65,11 @@ async function marcar(page, chave, rotulo, tipo, indice = 0) {
           (el) => vis(el) && !rot.contains(el) && rot.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING
         );
         const doTipo = candidatos.filter((el) =>
-          tipo === 'select'
+          tipo === 'qualquer'
+            ? el.tagName === 'SELECT' ||
+              el.tagName === 'TEXTAREA' ||
+              (el.tagName === 'INPUT' && !ignorados.includes((el.type || 'text').toLowerCase()))
+            : tipo === 'select'
             ? el.tagName === 'SELECT'
             : tipo === 'radio'
               ? el.type === 'radio'
@@ -203,6 +207,66 @@ async function esperarOpcoes(page, chave, minimo = 2, ms = 10000) {
   return false;
 }
 
+// ---------- Carga Horária ----------
+// Pode ser uma lista (escolhe a opção com o número) ou um campo de texto (digita o número).
+// Espera as opções carregarem, preenche e confere se o valor ficou (o SIRAC refaz a tela por AJAX
+// e pode apagar a escolha). Devolve { ok, texto } ou { ok: false, motivo }.
+
+const cargaConfere = (texto, num) => new RegExp(`(^|\\D)0*${num}(\\D|$)`).test(String(texto || ''));
+
+async function acharCampoCarga(page, ms) {
+  const inicio = Date.now();
+  while (Date.now() - inicio < ms) {
+    for (const rotulo of SUBSTITUICAO.rotulosCarga) {
+      if (await marcar(page, 'carga', rotulo, 'qualquer', 0)) return campoMarcado(page, 'carga');
+    }
+    await page.waitForTimeout(200);
+  }
+  return null;
+}
+
+const valorDoCampo = (campo) =>
+  campo
+    .evaluate((el) => (el.tagName === 'SELECT' ? (el.selectedOptions[0]?.textContent || '').trim() : (el.value || '').trim()))
+    .catch(() => '');
+
+async function preencherCarga(page, carga) {
+  const num = soDigitos(carga).replace(/^0+(?=\d)/, '');
+  let motivo = 'não achei o campo';
+
+  for (let tentativa = 0; tentativa < 4; tentativa++) {
+    try {
+      let campo = await acharCampoCarga(page, 10000);
+      if (!campo) return { ok: false, motivo };
+
+      const ehLista = await campo.evaluate((el) => el.tagName === 'SELECT');
+      if (ehLista) {
+        await esperarOpcoes(page, 'carga', 2, 10000); // as opções podem depender de Turno/Cargo
+        campo = (await acharCampoCarga(page, 3000)) || campo;
+        const r = await selecionarFlex(campo, [`re:(^|\\D)0*${num}(\\D|$)`]);
+        if (!r.ok) {
+          motivo = `não achei ${num} entre as opções: ${(r.opcoes || []).join(' | ') || 'nenhuma carregada'}`;
+          await aguardar(page);
+          continue;
+        }
+      } else {
+        await preencherCampo(campo, num);
+      }
+      await aguardar(page);
+
+      // Confere se o valor ficou depois do SIRAC atualizar a tela.
+      const campo2 = await acharCampoCarga(page, 3000);
+      const atual = campo2 ? await valorDoCampo(campo2) : '';
+      if (cargaConfere(atual, num)) return { ok: true, texto: atual };
+      motivo = 'o SIRAC apagou o valor depois de escolher';
+    } catch (err) {
+      motivo = err.message.split('\n')[0];
+      await aguardar(page);
+    }
+  }
+  return { ok: false, motivo };
+}
+
 // ---------- fluxo principal ----------
 
 // d = { temTitular, nome, cpf, matricula, turno, cargaHoraria, dataInicio, dataFim } (datas em dd/mm/aaaa)
@@ -303,11 +367,20 @@ async function preencherSubstituicao(d) {
 
   marca('cargo, região e especialidade');
 
+  let cargaOk = false;
   if (!d.turno) pendencias.push('Turno (não veio do EducaDF)');
   else await lista('turno', 'Turno', 'Turno', candidatosTurno(d.turno), `"${d.turno}"`, { mostrar: true });
 
   if (!d.cargaHoraria) pendencias.push('Carga Horária (não veio do EducaDF)');
-  else await lista('carga', 'Carga Horária', 'Carga Horária', candidatosCarga(d.cargaHoraria), d.cargaHoraria, { mostrar: true });
+  else {
+    const r = await preencherCarga(page, d.cargaHoraria);
+    if (r.ok) {
+      cargaOk = true;
+      preenchidos.push(`Carga Horária (${r.texto})`);
+    } else {
+      pendencias.push(`Carga Horária (${r.motivo}; escolha ${d.cargaHoraria} à mão)`);
+    }
+  }
 
   marca('turno e carga horária');
 
@@ -335,6 +408,20 @@ async function preencherSubstituicao(d) {
     }
   }
   marca('datas');
+
+  // Última conferência: a carga horária pode ter sido apagada quando o SIRAC refez a tela.
+  if (cargaOk) {
+    const campo = await acharCampoCarga(page, 3000);
+    const atual = campo ? await valorDoCampo(campo) : '';
+    if (!cargaConfere(atual, soDigitos(d.cargaHoraria).replace(/^0+(?=\d)/, ''))) {
+      const r = await preencherCarga(page, d.cargaHoraria);
+      if (!r.ok) {
+        const i = preenchidos.findIndex((p) => p.startsWith('Carga Horária'));
+        if (i >= 0) preenchidos.splice(i, 1);
+        pendencias.push(`Carga Horária (${r.motivo}; escolha ${d.cargaHoraria} à mão)`);
+      }
+    }
+  }
 
   // Fica para você: conferir as datas, Motivo da Carência (com titular), Especialidade (sem titular) e Adicionar.
   await page.bringToFront();

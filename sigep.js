@@ -12,6 +12,12 @@ const cancelamento = require('./cancelamento');
 
 const soDigitos = (s) => String(s || '').replace(/\D/g, '');
 
+// Matrícula como aparece na lista do SIGEP: "7064.184-6" ou "7065.686-X" (o último dígito pode ser a letra X).
+const MAT = String.raw`\d[\d.]*(?:-[\dXx])?`;
+const RE_LINHA = new RegExp(String.raw`^\s*${MAT}\s+\S`);
+const RE_MATRICULA = new RegExp(String.raw`^\s*(${MAT})`);
+const RE_MATRICULA_NOME = new RegExp(String.raw`^\s*(${MAT})\s+([^(]+)`);
+
 // 21/04/1994 -> 1994-04-21
 const paraISO = (br) => br.split('/').reverse().join('-');
 
@@ -77,11 +83,11 @@ function normalizarData(texto) {
 // Espera a ficha do servidor clicado carregar e devolve a data de nascimento (dd/mm/aaaa) ou ''.
 // Se a matrícula da ficha for legível, só aceita a da linha clicada (evita ler a ficha da
 // busca anterior). Se não der para ler a matrícula, aceita depois de 3 segundos.
-async function lerNascimentoDaFicha(page, matriculaEsperada) {
+async function lerNascimentoDaFicha(page, matriculaEsperada, limiteMs = 15000) {
   const inicio = Date.now();
   let ultimo = { matricula: '', nascimento: '' };
 
-  while (Date.now() - inicio < 15000) {
+  while (Date.now() - inicio < limiteMs) {
     cancelamento.verificar();
     ultimo = await lerFicha(page);
     const data = normalizarData(ultimo.nascimento);
@@ -198,21 +204,40 @@ async function buscarNoSigep(cpf) {
   }
 
   // Linhas da lista: começam com a matrícula (ex.: "7064.184-6 BARBARA LOPES...")
-  const itens = page.getByText(/^\s*\d[\d.\-]*\s+\S/);
+  const itens = page.getByText(RE_LINHA);
   const textos = await itens.allInnerTexts();
   const matriculas = [
-    ...new Set(textos.map((t) => soDigitos(t.match(/^\s*(\d[\d.\-]*)/)[1]))),
+    ...new Set(textos.map((t) => soDigitos(t.match(RE_MATRICULA)[1]))),
   ].filter(Boolean);
 
   if (!matriculas.length) {
     throw new Error('Servidor não encontrado no SIGEP para esse CPF.');
   }
 
+  const comLetra = textos.map((x) => (x.match(RE_MATRICULA) || [])[1]).filter((m) => m && /x$/i.test(m));
+  const nota = comLetra.length
+    ? `A matrícula do SIGEP termina em X (${comLetra[0]}); o programa usou só os números (${soDigitos(comLetra[0])}). Confira como o SIRAC pede.`
+    : '';
+
   // Abre a primeira linha para ler a data de nascimento (é a mesma pessoa em todos os vínculos).
-  await itens.first().click();
-  const nasc = await lerNascimentoDaFicha(page, matriculas[0]);
+  // Se a ficha não abrir (clique que não pegou, tela ainda atualizando), tenta de novo até 3 vezes.
+  console.log(`SIGEP: lista com ${matriculas.length} matrícula(s); abrindo a primeira linha.`);
+  let nasc = '';
+  for (let tentativa = 1; tentativa <= 3 && !nasc; tentativa++) {
+    cancelamento.verificar();
+    const linha = itens.first();
+    await linha.scrollIntoViewIfNeeded({ timeout: 3000 }).catch(() => {});
+    try {
+      await linha.click({ timeout: 5000 });
+    } catch {
+      await linha.click({ force: true, timeout: 5000 }).catch(() => {});
+    }
+    nasc = await lerNascimentoDaFicha(page, matriculas[0], tentativa === 1 ? 15000 : 8000);
+    if (!nasc) console.log(`SIGEP: a tentativa ${tentativa} de abrir a ficha não trouxe o nascimento.`);
+  }
 
   return {
+    nota,
     matriculas, // pode ter mais de uma (mais de um vínculo)
     dataNascimento: nasc ? paraISO(nasc) : '',
     aviso: nasc ? '' : 'SIGEP: achei a matrícula, mas não consegui ler a data de nascimento na ficha.',
@@ -285,13 +310,13 @@ async function buscarServidorPorNome(nome) {
     throw new Error('Titular não encontrado no SIGEP pelo nome (ou o SIGEP mostrou o nome de outro jeito).');
   }
 
-  const itens = page.getByText(/^\s*\d[\d.\-]*\s+\S/);
+  const itens = page.getByText(RE_LINHA);
   const textos = await itens.allInnerTexts();
 
   // Cada linha: "7064.184-6 NOME (LOTAÇÃO/Fone:...)"
   const linhas = textos
     .map((t, indice) => {
-      const m = t.match(/^\s*(\d[\d.\-]*)\s+([^(]+)/);
+      const m = t.match(RE_MATRICULA_NOME);
       return m ? { indice, matricula: soDigitos(m[1]), nome: normaliza(m[2]) } : null;
     })
     .filter(Boolean);
@@ -312,7 +337,7 @@ async function buscarServidorPorNome(nome) {
   if (!cpf) avisos.push('SIGEP: achei o titular, mas não consegui ler o CPF na ficha. Digite o CPF à mão.');
 
   return {
-    nome: textos[escolhida.indice].match(/^\s*\d[\d.\-]*\s+([^(]+)/)[1].trim(),
+    nome: textos[escolhida.indice].match(RE_MATRICULA_NOME)[2].trim(),
     cpf,
     matricula: escolhida.matricula,
     matriculas,
