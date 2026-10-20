@@ -272,6 +272,9 @@
       </div>
     </div>
 
+    <label for="especialidade"><svg class="ico" aria-hidden="true"><use href="#i-lista"/></svg>Especialidade <span style="font-weight:400;color:var(--tinta-suave)">(opcional)</span></label>
+    <input id="especialidade" placeholder="ex.: Atividades (em branco: Atividades com titular; sem titular, você escolhe)">
+
     <div class="linha">
       <div>
         <label for="dataInicio"><svg class="ico" aria-hidden="true"><use href="#i-caneta"/></svg>Data de início <span style="font-weight:400;color:var(--tinta-suave)">(início do período)</span></label>
@@ -420,6 +423,7 @@ $('btnPreencher').addEventListener('click', async () => {
         nome: $('nome').value,
         cpf: $('cpf').value,
         matricula: $('matricula').value,
+        especialidade: $('especialidade').value,
         turno: $('turno').value,
         cargaHoraria: $('cargaHoraria').value,
         dataInicio: $('dataInicio').value,
@@ -431,7 +435,7 @@ $('btnPreencher').addEventListener('click', async () => {
 
     const falta = [];
     if ($('temTitular').value === 'sim') falta.push('Motivo da Carência');
-    else falta.push('Especialidade');
+    else if (!$('especialidade').value.trim()) falta.push('Especialidade');
     falta.push('Clicar em Adicionar');
 
     if (r.pendencias && r.pendencias.length) {

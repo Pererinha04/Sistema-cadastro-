@@ -3,7 +3,7 @@
 // O programa NÃO clica em "Adicionar": você confere, escolhe as datas à mão e adiciona.
 //
 // Com titular:  Abertura da Turma = Não; preenche Nome, CPF, Matrícula, Cargo, Região,
-//               Especialidade (Atividades), Turno e Carga Horária.
+//               Especialidade (Atividades), Turno e Carga Horária (a Especialidade digitada na tela vale nos dois casos).
 // Sem titular:  Abertura da Turma = Sim; preenche Cargo, Região, Turno e Carga Horária
 //               (a Especialidade e as datas são com você).
 
@@ -11,9 +11,30 @@ const { abaAberta } = require('./navegador');
 const { preencherCampo } = require('./sirac');
 
 // Espera a rede assentar (o SIRAC refaz partes da tela por AJAX) e dá um respiro.
-async function aguardar(page) {
-  await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
-  await page.waitForTimeout(500);
+// Acompanha as requisições em andamento da aba. Assim a espera acaba assim que o SIRAC termina de
+// responder (o "networkidle" do navegador ainda soma 500 ms de silêncio a cada espera).
+function vigiarRede(page) {
+  if (page.__vigiaRede) return page.__vigiaRede;
+  const v = { abertas: new Set(), ultimo: Date.now() };
+  const fim = (r) => {
+    v.abertas.delete(r);
+    v.ultimo = Date.now();
+  };
+  page.on('request', (r) => v.abertas.add(r));
+  page.on('requestfinished', fim);
+  page.on('requestfailed', fim);
+  page.__vigiaRede = v;
+  return v;
+}
+
+async function aguardar(page, limiteMs = 8000, quietoMs = 120) {
+  const v = vigiarRede(page);
+  await page.waitForTimeout(60); // dá tempo da requisição disparada pela ação começar
+  const inicio = Date.now();
+  while (Date.now() - inicio < limiteMs) {
+    if (v.abertas.size === 0 && Date.now() - v.ultimo >= quietoMs) return;
+    await page.waitForTimeout(40);
+  }
 }
 const { SUBSTITUICAO } = require('./config');
 
@@ -202,9 +223,76 @@ async function esperarOpcoes(page, chave, minimo = 2, ms = 10000) {
       .evaluate((s) => s.options.length)
       .catch(() => 0);
     if (n >= minimo) return true;
-    await page.waitForTimeout(200);
+    await page.waitForTimeout(100);
   }
   return false;
+}
+
+// ---------- datas (busca por aproximação) ----------
+// Quando o texto exato do rótulo não bate, procura o campo de data pelo sentido do rótulo
+// ("início/inicial" ou "término/fim/final", mesmo com texto a mais, ex.: "Data de Fim da Carência").
+// Para o fim, se nada for achado, usa o campo de texto que vem logo depois do de início.
+// Devolve { achou, rotulos } (rotulos = textos de rótulos parecidos vistos na tela, só para diagnóstico).
+async function marcarDataAproximada(page, chave) {
+  try {
+    return await page.evaluate((chave) => {
+      const n = (s) =>
+        String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[*:?]/g, '').replace(/\s+/g, ' ').trim();
+      const vis = (el) => !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length);
+      const proprio = (el) => Array.from(el.childNodes).filter((x) => x.nodeType === 3).map((x) => x.textContent).join(' ');
+      const ignorados = ['hidden', 'radio', 'checkbox', 'button', 'submit', 'image', 'file', 'reset', 'password'];
+
+      const todos = [...document.querySelectorAll('body *')];
+      const ancora = todos.find((el) => vis(el) && n(proprio(el)).startsWith('dados do(a) servidor(a) efetivo(a) substituido(a)'));
+      const depois = (ref, el) => !!(ref.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING);
+      const depoisAncora = (el) => !ancora || depois(ancora, el);
+
+      const inputs = [...document.querySelectorAll('input, textarea')].filter(
+        (el) => vis(el) && depoisAncora(el) && (el.tagName === 'TEXTAREA' || !ignorados.includes((el.type || 'text').toLowerCase()))
+      );
+      const rotulos = todos.filter((el) => {
+        const t = n(proprio(el));
+        return vis(el) && depoisAncora(el) && t && t.length < 60;
+      });
+
+      const reIni = /\b(inicio|inicial)\b/;
+      const reFim = /\b(termino|fim|final)\b/;
+      const reData = /data|periodo|carencia|vigencia/;
+
+      const primeiroCampoApos = (rot) => inputs.find((i) => !rot.contains(i) && depois(rot, i));
+      const marcarAlvo = (ch, campo) => {
+        document.querySelectorAll(`[data-auto-sub="${ch}"]`).forEach((e) => e.removeAttribute('data-auto-sub'));
+        campo.setAttribute('data-auto-sub', ch);
+      };
+      const porRotulo = (re) => {
+        const rot = rotulos.find((r) => re.test(n(proprio(r))) && reData.test(n(proprio(r))) && primeiroCampoApos(r));
+        return rot ? primeiroCampoApos(rot) : null;
+      };
+
+      let campo = null;
+      if (chave === 'data_inicio') {
+        campo = porRotulo(reIni);
+      } else {
+        campo = porRotulo(reFim);
+        if (!campo) {
+          // O campo de fim costuma vir logo depois do de início.
+          const ini = porRotulo(reIni) || document.querySelector('[data-auto-sub="data_inicio"]');
+          if (ini) campo = inputs.find((i) => i !== ini && depois(ini, i));
+        }
+      }
+      if (campo) {
+        marcarAlvo(chave, campo);
+        return { achou: true, rotulos: [] };
+      }
+      const dicas = rotulos
+        .map((r) => proprio(r).replace(/\s+/g, ' ').trim())
+        .filter((x) => /data|inicio|início|termino|término|fim|final|periodo|período/i.test(x))
+        .slice(0, 8);
+      return { achou: false, rotulos: dicas };
+    }, chave);
+  } catch {
+    return { achou: false, rotulos: [] };
+  }
 }
 
 // ---------- Carga Horária ----------
@@ -269,7 +357,7 @@ async function preencherCarga(page, carga) {
 
 // ---------- fluxo principal ----------
 
-// d = { temTitular, nome, cpf, matricula, turno, cargaHoraria, dataInicio, dataFim } (datas em dd/mm/aaaa)
+// d = { temTitular, nome, cpf, matricula, especialidade, turno, cargaHoraria, dataInicio, dataFim } (datas em dd/mm/aaaa)
 async function preencherSubstituicao(d) {
   const page = abaAberta('sirac');
   if (!page) {
@@ -278,6 +366,7 @@ async function preencherSubstituicao(d) {
     );
   }
   await page.bringToFront();
+  vigiarRede(page);
 
   const t0 = Date.now();
   const marca = (etapa) => console.log(`SIRAC substituição: ${etapa} (${((Date.now() - t0) / 1000).toFixed(1)} s)`);
@@ -309,7 +398,7 @@ async function preencherSubstituicao(d) {
   if (!(await radio.isChecked().catch(() => false))) {
     await radio.check();
     await aguardar(page);
-    await page.waitForTimeout(1000); // o SIRAC refaz o formulário ao trocar a opção
+    await page.waitForTimeout(300); // o SIRAC refaz o formulário ao trocar a opção
   }
   preenchidos.push(`Abertura da Turma: ${d.temTitular ? 'Não' : 'Sim'}`);
   marca('abertura da turma');
@@ -342,10 +431,12 @@ async function preencherSubstituicao(d) {
   // Cada lista é marcada de novo a cada tentativa, porque o SIRAC refaz a tela depois de cada escolha.
   // Se uma lista falhar, ela vai para as pendências e o resto continua.
   async function lista(chave, rotulo, nome, candidatos, descricao, { antes, esperar = false, mostrar = false } = {}) {
+    const ti = Date.now();
     const r = await escolherNaLista(page, chave, rotulo, candidatos, antes);
     if (r.ok) {
       preenchidos.push(mostrar ? `${nome} (${r.escolhida})` : nome);
       if (esperar) await aguardar(page);
+      console.log(`SIRAC substituição: ${nome} escolhido em ${((Date.now() - ti) / 1000).toFixed(1)} s`);
     } else if (r.naoAchou) {
       pendencias.push(`${nome} (não achei o campo)`);
     } else if (r.erro) {
@@ -358,10 +449,14 @@ async function preencherSubstituicao(d) {
   await lista('cargo', 'Cargo / Emprego', 'Cargo / Emprego', [SUBSTITUICAO.cargo], `"${SUBSTITUICAO.cargo}"`, { esperar: true });
   await lista('regiao', 'Região / Regional de Ensino', 'Região', [SUBSTITUICAO.regiao], `"${SUBSTITUICAO.regiao}"`, { esperar: true });
 
-  if (d.temTitular) {
-    await lista('especialidade', 'Especialidade / Disciplina', 'Especialidade', [SUBSTITUICAO.especialidadeComTitular], `"${SUBSTITUICAO.especialidadeComTitular}"`, {
+  // Especialidade: o que você digitou na tela; sem nada digitado, usa "Atividades" quando há titular
+  // e, sem titular, deixa para você escolher.
+  const especialidade = String(d.especialidade || '').trim() || (d.temTitular ? SUBSTITUICAO.especialidadeComTitular : '');
+  if (especialidade) {
+    await lista('especialidade', 'Especialidade / Disciplina', 'Especialidade', [especialidade], `"${especialidade}"`, {
       antes: () => esperarOpcoes(page, 'especialidade'),
       esperar: true,
+      mostrar: true,
     });
   }
 
@@ -395,9 +490,22 @@ async function preencherSubstituicao(d) {
       continue;
     }
     const rotulos = SUBSTITUICAO.rotulosDatas[chave === 'data_inicio' ? 'inicio' : 'fim'];
-    const campo = await esperarCampoPorRotulos(page, chave, rotulos);
+    let campo = null;
+    let dicas = [];
+    const limite = Date.now() + 5000;
+    do {
+      campo = await esperarCampoPorRotulos(page, chave, rotulos, 250);
+      if (!campo) {
+        // Texto do rótulo diferente do esperado: procura pelo sentido ("início", "fim"/"término").
+        const r = await marcarDataAproximada(page, chave);
+        if (r.achou) campo = campoMarcado(page, chave);
+        else dicas = r.rotulos;
+      }
+    } while (!campo && Date.now() < limite);
     if (!campo) {
-      pendencias.push(`${nome} (não achei o campo; confira SUBSTITUICAO.rotulosDatas no config.js)`);
+      pendencias.push(
+        `${nome} (não achei o campo${dicas.length ? `; rótulos parecidos na tela: ${dicas.join(' | ')}` : ''}; preencha à mão)`
+      );
       continue;
     }
     try {

@@ -281,6 +281,7 @@ app.post('/substituicao/preencher', async (req, res) => {
     nome: String(req.body.nome || '').trim().toUpperCase(),
     cpf: soDigitos(req.body.cpf),
     matricula: soDigitos(req.body.matricula),
+    especialidade: String(req.body.especialidade || '').trim(),
     turno: String(req.body.turno || '').trim(),
     cargaHoraria: soDigitos(req.body.cargaHoraria),
     dataInicio: paraBR(req.body.dataInicio),
