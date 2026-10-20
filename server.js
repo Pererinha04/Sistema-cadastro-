@@ -105,6 +105,7 @@ function validar(d) {
   if (!soDigitos(d.matricula)) return 'Informe a matrícula (somente números).';
   if (!/^\d{4}-\d{2}-\d{2}$/.test(d.dataNascimento || '')) return 'Informe a data de nascimento.';
   if (!['Masculino', 'Feminino'].includes(d.sexo)) return 'Escolha o sexo.';
+  if (d.cargaHoraria && !/^\d{1,3}$/.test(d.cargaHoraria)) return 'A carga horária deve ter só números (ex.: 30).';
   if (d.turno && !['Matutino', 'Vespertino', 'Diurno', 'Noturno'].includes(d.turno)) return 'Turno inválido.';
   return null;
 }
@@ -195,6 +196,7 @@ app.post('/preencher', async (req, res) => {
     dataAssinatura: paraBR(req.body.dataAssinatura),
     dataTermino: paraBR(req.body.dataTermino),
     turno: String(req.body.turno || '').trim(),
+    cargaHoraria: soDigitos(req.body.cargaHoraria),
   };
 
   const erro = validar(dados);

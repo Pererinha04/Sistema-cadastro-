@@ -2,7 +2,7 @@
 // Automação do navegador (Playwright) para preencher a Admissão no SIRAC.
 // O programa NÃO clica em "Salvar": você confere os campos e salva manualmente.
 
-const { novaAba, registrarAba } = require('./navegador');
+const { novaAba, registrarAba, abaAberta } = require('./navegador');
 const { acharLogin, preencherLogin } = require('./login');
 const {
   URL_SIRAC,
@@ -170,8 +170,15 @@ async function abrirPeloMenu(page) {
   for (let i = 0; i < SIRAC_MENU.length; i++) {
     const item = page.getByText(SIRAC_MENU[i], { exact: true }).filter({ visible: true }).first();
     await item.waitFor({ state: 'visible', timeout: 8000 });
-    if (i < SIRAC_MENU.length - 1) await item.hover();
-    else await item.click();
+    if (i < SIRAC_MENU.length - 1) {
+      await item.hover();
+      await page.waitForTimeout(400);
+      // Se o submenu não abriu só com o mouse em cima, clica no item.
+      const proximo = page.getByText(SIRAC_MENU[i + 1], { exact: true }).filter({ visible: true }).first();
+      if (!(await proximo.isVisible().catch(() => false))) await item.click();
+    } else {
+      await item.click();
+    }
     await page.waitForTimeout(500);
   }
 }
@@ -380,8 +387,28 @@ async function informarCpf(page, cpf) {
 }
 
 // Etapas 0 a 3: abre o SIRAC e chega até o formulário de Admissão.
-async function abrirFormularioAdmissao(page, cpf) {
-  if (SIRAC_ABRIR_PELO_MENU) {
+async function abrirFormularioAdmissao(page, cpf, { reaproveitada = false } = {}) {
+  // Aba do SIRAC que já estava aberta: não abre outra; vai em Jurisdicionado > Cadastrar Admissão
+  // pelo menu (SIRAC_MENU) e segue o mesmo processo de sempre.
+  let voltouPeloMenu = false;
+  if (reaproveitada && SIRAC_MENU.length) {
+    const primeiro = page.getByText(SIRAC_MENU[0], { exact: true }).filter({ visible: true }).first();
+    if (await primeiro.count().catch(() => 0)) {
+      try {
+        console.log(`SIRAC: aba já aberta; indo em ${SIRAC_MENU.join(' > ')} pelo menu.`);
+        await abrirPeloMenu(page);
+        await page.waitForLoadState('domcontentloaded').catch(() => {});
+        await aguardar(page);
+        voltouPeloMenu = true;
+      } catch (err) {
+        console.log(`SIRAC: não consegui usar o menu na aba aberta (${err.message.split('\n')[0]}); abrindo a página inicial.`);
+      }
+    }
+  }
+
+  if (voltouPeloMenu) {
+    // já está na tela de pesquisa de Cadastrar Admissão
+  } else if (SIRAC_ABRIR_PELO_MENU) {
     await page.goto(URL_SIRAC_INICIO);
     console.log(
       SIRAC_MENU.length
@@ -474,10 +501,66 @@ async function preencherTurno(page, turno) {
   };
 }
 
+// ---------- Carga Horária ----------
+
+// Campo (lista ou texto) que vem logo depois do rótulo da Carga Horária no formulário de Admissão.
+async function preencherCargaHoraria(page, carga) {
+  const num = soDigitos(carga).replace(/^0+(?=\d)/, '');
+  const rotulos = Array.isArray(ROTULOS.cargaHoraria) ? ROTULOS.cargaHoraria : [ROTULOS.cargaHoraria];
+
+  let alvo = null;
+  if (SEL.cargaHoraria) {
+    alvo = page.locator(SEL.cargaHoraria).first();
+  } else {
+    const proximoCampo =
+      'following::*[self::select or self::input[not(@type="hidden") and not(@type="radio") and not(@type="checkbox") and not(@type="submit") and not(@type="button") and not(@type="image")]][1]';
+    for (const rotulo of rotulos) {
+      const loc = page.locator(`xpath=(${xRotulo(rotulo)})[1]/${proximoCampo}`);
+      if (await loc.count().catch(() => 0)) {
+        alvo = loc.first();
+        break;
+      }
+    }
+  }
+  if (!alvo) return { ok: false, motivo: `não achei o campo "${rotulos[0]}" na tela de Admissão` };
+
+  const ehLista = await alvo.evaluate((el) => el.tagName === 'SELECT');
+  if (ehLista) {
+    const r = await alvo.evaluate((s, n) => {
+      const norm = (t) => String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+      const textos = [...s.options].map((o) => o.textContent.trim());
+      const re = new RegExp(`(^|\\D)0*${n}(\\D|$)`);
+      const i = textos.findIndex((x) => norm(x) !== '' && !norm(x).startsWith('--') && re.test(norm(x)));
+      return { i, textos };
+    }, num);
+    if (r.i < 0) {
+      const opcoes = r.textos.filter((x) => x && !/^(--|selecione)/i.test(x));
+      return { ok: false, motivo: `não achei ${num} entre as opções: ${opcoes.join(' | ') || 'nenhuma'}` };
+    }
+    await alvo.selectOption({ index: r.i });
+    return { ok: true, escolhida: r.textos[r.i] };
+  }
+
+  await preencherCampo(alvo, num);
+  return { ok: true, escolhida: num };
+}
+
 async function preencherAdmissao(d) {
-  const page = await novaAba();
-  registrarAba('sirac', page); // a Substituição continua nesta mesma aba
-  await abrirFormularioAdmissao(page, d.cpf);
+  // Usa a aba do SIRAC que já está aberta (se houver); só abre uma nova na primeira vez.
+  let page = abaAberta('sirac');
+  const reaproveitada = Boolean(page);
+  if (page) {
+    await page.bringToFront();
+    if (!page.__aceitaSaida) {
+      page.__aceitaSaida = true;
+      // Se o SIRAC perguntar "deseja sair desta página?", aceita (os outros avisos seguem como antes).
+      page.on('dialog', (dlg) => (dlg.type() === 'beforeunload' ? dlg.accept() : dlg.dismiss()).catch(() => {}));
+    }
+  } else {
+    page = await novaAba();
+    registrarAba('sirac', page); // a Substituição continua nesta mesma aba
+  }
+  await abrirFormularioAdmissao(page, d.cpf, { reaproveitada });
 
   // Etapa 4: formulário de Admissão
   // --- variáveis (vêm do formulário local) ---
@@ -534,6 +617,16 @@ async function preencherAdmissao(d) {
       if (!r.ok) pendencias.push(`Turno (${r.motivo}; escolha ${d.turno} à mão)`);
     } catch (err) {
       pendencias.push(`Turno (${err.message.split('\n')[0]}; escolha ${d.turno} à mão)`);
+    }
+  }
+
+  // --- Carga Horária (digitada na tela do programa; em branco = não preenche) ---
+  if (d.cargaHoraria) {
+    try {
+      const r = await preencherCargaHoraria(page, d.cargaHoraria);
+      if (!r.ok) pendencias.push(`Carga Horária (${r.motivo}; coloque ${d.cargaHoraria} à mão)`);
+    } catch (err) {
+      pendencias.push(`Carga Horária (${err.message.split('\n')[0]}; coloque ${d.cargaHoraria} à mão)`);
     }
   }
 

@@ -403,7 +403,7 @@
           <input id="dataTermino" name="dataTermino" type="date">
         </div>
 
-        <div class="inteira">
+        <div>
           <label id="turnoRotulo"><svg class="ico" aria-hidden="true"><use href="#i-relogio"/></svg>Turno <span class="origem">(opcional)</span></label>
           <div class="seletor" id="seletorTurno">
             <input type="hidden" id="turno" name="turno" value="">
@@ -419,6 +419,11 @@
               <li role="option" data-valor="Noturno" aria-selected="false">Noturno<svg class="marca" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></li>
             </ul>
           </div>
+        </div>
+
+        <div>
+          <label for="cargaHoraria"><svg class="ico" aria-hidden="true"><use href="#i-lista"/></svg>Carga horária <span class="origem">(horas, opcional)</span></label>
+          <input id="cargaHoraria" name="cargaHoraria" type="text" inputmode="numeric" maxlength="3" placeholder="ex.: 30">
         </div>
 
         <fieldset class="inteira">

@@ -21,7 +21,7 @@ module.exports = {
   URL_SIRAC_INICIO: 'https://sirac-adm.tc.df.gov.br/sirac-adm/',
   // Itens do menu do SIRAC para chegar em Cadastrar Admissão, na ordem em que você clica
   // (texto exato de cada item), ex.: ['Admissão', 'Cadastrar Admissão']. Vazio = você abre à mão.
-  SIRAC_MENU: [],
+  SIRAC_MENU: ['Jurisdicionado', 'Cadastrar Admissão'],
 
   // Tela "Banco de Aprovado" do EducaDF.
   URL_EDUCADF: 'https://educadf.se.df.gov.br/cadastro-escola/modulos/gestao/banco-horas-aprovado',
@@ -116,6 +116,8 @@ module.exports = {
     dataAssinatura: 'Data de Assinatura do Contrato',
     dataTermino: 'Data de Término do Contrato',
     turno: 'Turno',
+    // Carga Horária do formulário de Admissão: tenta cada texto, na ordem.
+    cargaHoraria: ['Carga Horária', 'Carga Horária Semanal', 'Carga Horária (h)'],
   },
 
   // Seletores CSS dos campos. null = achar pelo texto de ROTULOS.
@@ -131,6 +133,7 @@ module.exports = {
     dataAssinatura: null,
     dataTermino: null,
     turno: null, // se o Turno for uma lista, o seletor dela
+    cargaHoraria: null, // seletor da Carga Horária, se o rótulo não for achado
 
     nacionalidade: null,
     escolaridade: null,
