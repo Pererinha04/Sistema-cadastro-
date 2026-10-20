@@ -115,6 +115,7 @@ module.exports = {
     subJudice: 'sub judice',
     dataAssinatura: 'Data de Assinatura do Contrato',
     dataTermino: 'Data de Término do Contrato',
+    turno: 'Turno',
   },
 
   // Seletores CSS dos campos. null = achar pelo texto de ROTULOS.
@@ -129,6 +130,7 @@ module.exports = {
     nascimento: null,
     dataAssinatura: null,
     dataTermino: null,
+    turno: null, // se o Turno for uma lista, o seletor dela
 
     nacionalidade: null,
     escolaridade: null,

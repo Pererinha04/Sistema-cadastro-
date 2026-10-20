@@ -413,6 +413,67 @@ async function abrirFormularioAdmissao(page, cpf) {
   await informarCpf(page, cpf);
 }
 
+// ---------- Turno ----------
+
+const SINONIMOS_TURNO = {
+  matutino: ['matutino', 'manha', 'm'],
+  vespertino: ['vespertino', 'tarde', 'v'],
+  noturno: ['noturno', 'noite', 'n'],
+  diurno: ['diurno', 'integral'],
+};
+
+const semAcento = (s) =>
+  String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+
+// Preenche o Turno no formulário de Admissão: se for uma lista, escolhe a opção; se forem botões
+// de marcar (radio), marca o que tem o nome do turno. Devolve { ok, escolhida } ou { ok: false, motivo }.
+async function preencherTurno(page, turno) {
+  const candidatos = [turno, ...(SINONIMOS_TURNO[semAcento(turno)] || [])];
+  let opcoes = [];
+
+  // 1) Lista (select) que vem depois do rótulo "Turno".
+  const select = campo(page, SEL.turno, ROTULOS.turno, 'select').first();
+  const temLista = await select.waitFor({ state: 'attached', timeout: 3000 }).then(() => true).catch(() => false);
+  if (temLista) {
+    const r = await select.evaluate((s, cands) => {
+      const n = (t) =>
+        String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
+      const textos = [...s.options].map((o) => o.textContent.trim());
+      const normais = textos.map(n);
+      const valida = (i) => normais[i] !== '' && !normais[i].startsWith('--') && !normais[i].startsWith('selecione');
+      for (const c of cands) {
+        const alvo = n(c);
+        let i = normais.findIndex((x, k) => valida(k) && x === alvo);
+        if (i < 0 && alvo.length > 1) i = normais.findIndex((x, k) => valida(k) && x.startsWith(alvo));
+        if (i < 0 && alvo.length > 1) i = normais.findIndex((x, k) => valida(k) && x.includes(alvo));
+        if (i >= 0) return { i, textos };
+      }
+      return { i: -1, textos };
+    }, candidatos);
+    if (r.i >= 0) {
+      await select.selectOption({ index: r.i });
+      return { ok: true, escolhida: r.textos[r.i] };
+    }
+    opcoes = r.textos.filter((x) => x && !/^(--|selecione)/i.test(x));
+  }
+
+  // 2) Botões de marcar (radio) com o nome do turno.
+  for (const nome of candidatos.filter((x) => x.length > 1)) {
+    const radioTurno = page.getByRole('radio', { name: nome, exact: true }).first();
+    if (await radioTurno.count().catch(() => 0)) {
+      await radioTurno.check();
+      return { ok: true, escolhida: nome };
+    }
+  }
+
+  return {
+    ok: false,
+    motivo: temLista
+      ? `não achei "${turno}" entre as opções: ${opcoes.join(' | ') || 'nenhuma'}`
+      : `não achei o campo "${ROTULOS.turno}" na tela de Admissão`,
+  };
+}
+
 async function preencherAdmissao(d) {
   const page = await novaAba();
   registrarAba('sirac', page); // a Substituição continua nesta mesma aba
@@ -465,8 +526,20 @@ async function preencherAdmissao(d) {
     );
   }
 
+  // --- Turno (escolhido na tela do programa; em branco = não preenche) ---
+  const pendencias = [];
+  if (d.turno) {
+    try {
+      const r = await preencherTurno(page, d.turno);
+      if (!r.ok) pendencias.push(`Turno (${r.motivo}; escolha ${d.turno} à mão)`);
+    } catch (err) {
+      pendencias.push(`Turno (${err.message.split('\n')[0]}; escolha ${d.turno} à mão)`);
+    }
+  }
+
   // Deixa a aba na frente para você conferir. Não salva.
   await page.bringToFront();
+  return { pendencias };
 }
 
 module.exports = { preencherAdmissao, abrirFormularioAdmissao, aguardar, preencherCampo };

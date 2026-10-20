@@ -105,6 +105,7 @@ function validar(d) {
   if (!soDigitos(d.matricula)) return 'Informe a matrícula (somente números).';
   if (!/^\d{4}-\d{2}-\d{2}$/.test(d.dataNascimento || '')) return 'Informe a data de nascimento.';
   if (!['Masculino', 'Feminino'].includes(d.sexo)) return 'Escolha o sexo.';
+  if (d.turno && !['Matutino', 'Vespertino', 'Diurno', 'Noturno'].includes(d.turno)) return 'Turno inválido.';
   return null;
 }
 
@@ -193,14 +194,15 @@ app.post('/preencher', async (req, res) => {
     sexo: req.body.sexo,
     dataAssinatura: paraBR(req.body.dataAssinatura),
     dataTermino: paraBR(req.body.dataTermino),
+    turno: String(req.body.turno || '').trim(),
   };
 
   const erro = validar(dados);
   if (erro) return res.status(400).json({ ok: false, erro });
 
   try {
-    await preencherAdmissao(dados);
-    res.json({ ok: true });
+    const r = await preencherAdmissao(dados);
+    res.json({ ok: true, pendencias: (r && r.pendencias) || [] });
   } catch (err) {
     console.error(err.message);
     res.status(500).json({ ok: false, erro: err.message });
