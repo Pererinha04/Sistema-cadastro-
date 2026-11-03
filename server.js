@@ -223,6 +223,7 @@ app.post('/substituicao/buscar', async (req, res) => {
     codigo,
     temTitular: false,
     titular: '',
+    motivo: '',
     nome: '',
     cpf: '',
     matricula: '',
@@ -242,6 +243,7 @@ app.post('/substituicao/buscar', async (req, res) => {
     Object.assign(resultado, {
       temTitular: c.temTitular,
       titular: c.titular,
+      motivo: c.motivo,
       nome: c.titular,
       turno: c.turno,
       cargaHoraria: c.cargaHoraria,
@@ -281,6 +283,7 @@ app.post('/substituicao/buscar', async (req, res) => {
 app.post('/substituicao/preencher', async (req, res) => {
   const dados = {
     temTitular: Boolean(req.body.temTitular),
+    motivo: String(req.body.motivo || '').trim(),
     nome: String(req.body.nome || '').trim().toUpperCase(),
     cpf: soDigitos(req.body.cpf),
     matricula: soDigitos(req.body.matricula),

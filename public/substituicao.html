@@ -259,6 +259,8 @@
           <input id="matricula" inputmode="numeric">
         </div>
       </div>
+      <label for="motivo">Motivo da carência</label>
+      <input id="motivo" placeholder="Lido no painel de detalhes do EducaDF">
     </div>
 
     <div class="linha">
@@ -388,6 +390,7 @@ $('btnBuscar').addEventListener('click', async () => {
     $('nome').value = r.nome || '';
     $('cpf').value = r.cpf || '';
     $('matricula').value = r.matricula || '';
+    $('motivo').value = r.motivo || '';
     $('turno').value = r.turno || '';
     $('cargaHoraria').value = r.cargaHoraria || '';
     $('dataInicio').value = r.dataInicio || '';
@@ -423,6 +426,7 @@ $('btnPreencher').addEventListener('click', async () => {
         nome: $('nome').value,
         cpf: $('cpf').value,
         matricula: $('matricula').value,
+        motivo: $('motivo').value,
         especialidade: $('especialidade').value,
         turno: $('turno').value,
         cargaHoraria: $('cargaHoraria').value,
@@ -434,8 +438,7 @@ $('btnPreencher').addEventListener('click', async () => {
     if (!r.ok) return caixa('msgEnvio', 'erro', r.erro || 'Não consegui preencher.');
 
     const falta = [];
-    if ($('temTitular').value === 'sim') falta.push('Motivo da Carência');
-    else if (!$('especialidade').value.trim()) falta.push('Especialidade');
+    if ($('temTitular').value !== 'sim' && !$('especialidade').value.trim()) falta.push('Especialidade');
     falta.push('Clicar em Adicionar');
 
     if (r.pendencias && r.pendencias.length) {

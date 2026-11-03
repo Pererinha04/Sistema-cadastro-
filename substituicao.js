@@ -357,7 +357,7 @@ async function preencherCarga(page, carga) {
 
 // ---------- fluxo principal ----------
 
-// d = { temTitular, nome, cpf, matricula, especialidade, turno, cargaHoraria, dataInicio, dataFim } (datas em dd/mm/aaaa)
+// d = { temTitular, nome, cpf, matricula, motivo, especialidade, turno, cargaHoraria, dataInicio, dataFim } (datas em dd/mm/aaaa)
 async function preencherSubstituicao(d) {
   const page = abaAberta('sirac');
   if (!page) {
@@ -446,6 +446,15 @@ async function preencherSubstituicao(d) {
     }
   }
 
+  if (d.temTitular) {
+    const motivo = String(d.motivo || '').trim();
+    if (motivo) {
+      await lista('motivo_carencia', 'Motivo da Carência', 'Motivo da Carência', [motivo], `\"${motivo}\"`, { esperar: true });
+    } else {
+      pendencias.push('Motivo da Carência (não veio preenchido)');
+    }
+  }
+
   await lista('cargo', 'Cargo / Emprego', 'Cargo / Emprego', [SUBSTITUICAO.cargo], `"${SUBSTITUICAO.cargo}"`, { esperar: true });
   await lista('regiao', 'Região / Regional de Ensino', 'Região', [SUBSTITUICAO.regiao], `"${SUBSTITUICAO.regiao}"`, { esperar: true });
 
@@ -531,7 +540,7 @@ async function preencherSubstituicao(d) {
     }
   }
 
-  // Fica para você: conferir as datas, Motivo da Carência (com titular), Especialidade (sem titular) e Adicionar.
+  // Fica para você: conferir as datas, o motivo (se não houver opção compatível), a especialidade sem titular e clicar em Adicionar.
   await page.bringToFront();
   return { preenchidos, pendencias };
 }

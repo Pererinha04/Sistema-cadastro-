@@ -144,63 +144,75 @@ async function buscarCarencia(codigo) {
     return { cab, cel };
   });
 
-  const celulaDa = (titulo) => {
+  const valorDa = (titulo) => {
     const i = cab.findIndex((h) => norm(h) === norm(titulo));
-    if (i < 0) {
-      throw new Error(`Coluna "${titulo}" não encontrada no EducaDF. Colunas lidas: ${cab.join(' | ').replace(/\n/g, ' ')}`);
-    }
-    return cel[i] || '';
+    return i < 0 ? '' : cel[i] || '';
   };
-
-  // A tela nova reúne professor e titular na mesma coluna; a linha "Titular:" identifica o titular.
-  const linhasProfessor = celulaDa(CARENCIA.colunas.titular).split('\n').map((t) => t.trim()).filter(Boolean);
-  const linhaTitular = linhasProfessor.find((t) => /^titular\s*:/i.test(t));
-  const textoTitular = linhaTitular ? linhaTitular.replace(/^titular\s*:\s*/i, '') : (linhasProfessor[0] || '');
-  const temTitular = Boolean(textoTitular) && !/^n[aã]o informado$/i.test(textoTitular) && textoTitular !== '-';
-  const titular = temTitular ? textoTitular : '';
-
-  const avisos = [];
-  let nomeCarga = '';
-  try {
-    nomeCarga = celulaDa(CARENCIA.colunas.nomeCargaHoraria);
-  } catch {}
-
-  // Período da carência = datas do contrato (início e fim), lidas na mesma linha.
   const per = lerPeriodo(cab, cel);
+  const avisos = [];
   if (per.periodo && (!per.dataInicio || !per.dataFim)) {
     avisos.push(`Não consegui ler as duas datas do Período (li: "${per.periodo}"). Preencha as datas à mão.`);
   }
 
-  // Ações > Horários da Carência
+  // Compatibilidade com a tabela antiga; a tela nova traz Titular no painel de detalhes.
+  const textoProfessor = valorDa(CARENCIA.colunas.titular);
+  const linhasProfessor = textoProfessor.split('\n').map((t) => t.trim()).filter(Boolean);
+  const linhaTitular = linhasProfessor.find((t) => /^titular\s*:/i.test(t));
+  let titular = linhaTitular
+    ? linhaTitular.replace(/^titular\s*:\s*/i, '')
+    : (linhasProfessor[0] && !/^sem substituto$/i.test(linhasProfessor[0]) ? linhasProfessor[0] : '');
+  let nomeCarga = valorDa(CARENCIA.colunas.nomeCargaHoraria);
+  let motivo = '';
+  let temTitular = Boolean(titular) && !/^n[aã]o informado$|^não tem$|^[-—]$/i.test(titular);
+  if (!temTitular) titular = '';
+
+  // A nova tela abre os detalhes como painel lateral dentro da própria página.
   const urlAntes = page.url();
   let textoHorarios = '';
-
   try {
-    await linha.getByText(digitos, { exact: true }).click({ timeout: 8000 });
-    const painel = page
-      .locator('[role="dialog"], .modal.show, .offcanvas.show')
-      .filter({ visible: true })
-      .last();
-    await painel.waitFor({ state: 'visible', timeout: 10000 });
-    await painel.getByRole('button', { name: /Horários da carência/i }).click({ timeout: 8000 });
+    const tituloDetalhe = page.getByText(new RegExp(`Carência\\s+${digitos}(?:\\D|$)`, 'i')).last();
+    if (!(await tituloDetalhe.isVisible().catch(() => false))) {
+      await linha.getByText(digitos, { exact: true }).click({ timeout: 8000 });
+    }
+    await tituloDetalhe.waitFor({ state: 'visible', timeout: 10000 });
+
+    const detalhes = await page.evaluate(() => {
+      const linhas = document.body.innerText.split(/\n+/).map((t) => t.trim()).filter(Boolean);
+      const normTexto = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+      const valor = (rotulo) => {
+        for (let i = linhas.length - 2; i >= 0; i--) {
+          if (normTexto(linhas[i]) === normTexto(rotulo)) return linhas[i + 1] || '';
+        }
+        return '';
+      };
+      return {
+        titular: valor('Titular'),
+        motivo: valor('Motivo'),
+        nomeCarga: linhas.find((t) => /\d{1,2}\s*h\b/i.test(t)) || '',
+      };
+    });
+    const titularPainel = String(detalhes.titular || '').trim();
+    motivo = String(detalhes.motivo || '').trim();
+    if (titularPainel) {
+      temTitular = !/^n[aã]o informado$|^não tem$|^[-—]$/i.test(titularPainel);
+      titular = temTitular ? titularPainel : '';
+    }
+    if (detalhes.nomeCarga) nomeCarga = detalhes.nomeCarga;
+
+    await page.getByRole('button', { name: /Horários da carência/i }).last().click({ timeout: 8000 });
     await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
     await page.waitForTimeout(1000);
-
-    textoHorarios = await page.evaluate(() => {
-      const v = (el) => !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length);
-      const janelas = [...document.querySelectorAll('[role="dialog"], .modal.show, .modal-dialog, .offcanvas.show')].filter(v);
-      return (janelas[janelas.length - 1] || document.body).innerText;
-    });
+    textoHorarios = await page.locator('body').innerText().catch(() => '');
   } catch (err) {
-    avisos.push(`Não consegui abrir "${CARENCIA.menuAcoes}" (${err.message.split('\n')[0]}). Preencha turno e carga horária à mão.`);
+    avisos.push(`Não consegui abrir os detalhes/horários da carência (${err.message.split('\n')[0]}).`);
   }
 
-  // Fecha o que abriu para a próxima busca começar limpa.
+  // Fecha o painel para a próxima busca começar limpa.
   try {
     if (page.url() !== urlAntes) {
       await page.goBack();
     } else {
-      const fechar = page.getByRole('button', { name: /fechar|voltar|cancelar|close/i }).filter({ visible: true }).first();
+      const fechar = page.getByRole('button', { name: /fechar|voltar|cancelar|close/i }).filter({ visible: true }).last();
       if (await fechar.count()) await fechar.click({ timeout: 3000 });
       else await page.keyboard.press('Escape');
     }
@@ -230,6 +242,7 @@ async function buscarCarencia(codigo) {
     codigo: digitos,
     temTitular,
     titular,
+    motivo,
     turno,
     cargaHoraria,
     periodo: per.periodo,
