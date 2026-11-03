@@ -24,17 +24,17 @@ module.exports = {
   SIRAC_MENU: ['Jurisdicionado', 'Cadastrar Admissão'],
 
   // Tela "Banco de Aprovado" do EducaDF.
-  URL_EDUCADF: 'https://educadf.se.df.gov.br/cadastro-escola/modulos/gestao/banco-horas-aprovado',
+  URL_EDUCADF: 'https://educadf.se.df.gov.br/cadastro-escola/modulos/gestao/banco-aprovados',
   EDUCADF: {
-    placeholderCpf: 'CPF',
-    menu: ['Modulação', 'Banco de Aprovado'], // cliques no menu lateral para chegar nesta tela
+    placeholderCpf: 'Digite nome ou CPF',
+    menu: ['Modulação', 'Banco de aprovados'], // cliques no menu lateral para chegar nesta tela
     colunas: {
-      nome: 'Nome do Aprovado',
+      nome: 'Candidato',
       // 'Ampla' (ex.: 801) ou 'Ordem de Convocação' (ex.: 96)
       classificacao: 'Ampla',
       // Coluna com os códigos, ex.: "SIGEP 381546" e "EducaDF 17643" (um em cada linha).
       // O código NÃO vai para o SIRAC: serve para consultar em Modulação > Gestão de Carência.
-      carencia: 'Carência em Exercício',
+      carencia: 'Situação',
     },
     // Qual código é usado: o primeiro que começar com este nome
     // ('EducaDF' ou 'SIGEP'). Se não houver, usa o primeiro código que aparecer. '' = sempre o primeiro.
@@ -47,14 +47,14 @@ module.exports = {
   // Tela "Gerenciar Carências" do EducaDF (Modulação > Gestão de Carência).
   URL_CARENCIA: 'https://educadf.se.df.gov.br/cadastro-escola/modulos/gestao/carencia',
   CARENCIA: {
-    placeholderCodigo: 'Código da Carência',
+    placeholderCodigo: 'Código, escola, professor ou matrícula',
     menu: ['Modulação', 'Gestão de Carência'], // cliques no menu lateral
     menuAcoes: 'Horários da Carência', // item do botão "..." (coluna Ações)
     colunas: {
-      titular: 'Professor Titular',
+      titular: 'Professor',
       substituto: 'Professor Substituto',
       periodo: 'Período', // ex.: 10/02/2026 a 22/12/2026 (início = assinatura, fim = término)
-      nomeCargaHoraria: 'Nome da Carga Horária', // ex.: 14_M_ATIVIDADES_30H_5ºC (usado só como reserva)
+      nomeCargaHoraria: 'Carga', // ex.: 14_M_ATIVIDADES_30H_5ºC (usado só como reserva)
     },
   },
 

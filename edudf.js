@@ -171,15 +171,17 @@ async function lerHistoricoConvocacoes(page, linha) {
 
   try {
     cancelamento.verificar();
-    await linha.locator('button').last().click({ timeout: 8000 });
-    await page.getByText(EDUCADF.menuHistorico).filter({ visible: true }).first().click({ timeout: 8000 });
+    await linha.locator('a').first().click({ timeout: 8000 });
+    const painel = page.locator('[role="dialog"], .modal.show, .offcanvas.show').filter({ visible: true }).last();
+    await painel.waitFor({ state: 'visible', timeout: 10000 });
     await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
     await page.waitForTimeout(1500);
     cancelamento.verificar();
 
     dados = await page.evaluate(() => {
       const v = (el) => !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length);
-      const janela = [...document.querySelectorAll('[role="dialog"], .modal.show, .modal-dialog, .offcanvas.show')].find(v);
+      const janelas = [...document.querySelectorAll('[role="dialog"], .modal.show, .modal-dialog, .offcanvas.show')].filter(v);
+      const janela = janelas[janelas.length - 1];
       const raiz = janela || document.body;
       const tabelas = [...raiz.querySelectorAll('table, [role="table"], [role="grid"]')]
         .filter(v)
@@ -215,7 +217,8 @@ async function lerHistoricoConvocacoes(page, linha) {
 
   if (!dados) return { ano, total: null, codigos: [], avisos, texto: '' };
 
-  const texto = dados.texto.replace(/\s+/g, ' ').trim().slice(0, 600);
+  const textoCompleto = dados.texto.replace(/\s+/g, ' ').trim();
+  const texto = textoCompleto.slice(0, 600);
   const norm = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
   const reAno = new RegExp(`(^|\\D)${ano}(\\D|$)`);
 
@@ -226,7 +229,15 @@ async function lerHistoricoConvocacoes(page, linha) {
   const tabela = (comCarencia.length ? comCarencia : tabelas).sort((x, y) => y.linhas.length - x.linhas.length)[0];
 
   if (!tabela || !tabela.linhas.length) {
-    avisos.push('Abri o Histórico de convocações, mas não achei uma tabela para contar. Confira à mão (veja "O que li" abaixo).');
+    const secao = textoCompleto.split(/CONVOCAÇÕES NESTE EDITAL/i)[1]?.split(/HABILITAÇÃO E APTIDÃO/i)[0] || '';
+    const convocacoes = [...secao.matchAll(/Carência\s+(\d{3,})[\s\S]{0,180}?(\d{2}\/\d{2}\/\d{4})/gi)];
+    if (secao) {
+      const codigos = convocacoes
+        .filter((m) => m[2].endsWith(ano))
+        .map((m) => ({ codigo: m[1], origem: 'EducaDF' }));
+      return { ano, total: codigos.length, codigos, avisos, texto };
+    }
+    avisos.push('Abri os detalhes do candidato, mas não achei a seção de convocações. Confira à mão (veja "O que li" abaixo).');
     return { ano, total: null, codigos: [], avisos, texto };
   }
 
@@ -271,11 +282,11 @@ async function buscarNoEducaDF(cpf) {
   const campoCpf = page.getByPlaceholder(EDUCADF.placeholderCpf, { exact: true });
 
   await campoCpf.fill(digitos);
-  await page.getByRole('button', { name: 'Filtrar' }).click();
+  await page.getByRole('button', { name: 'Buscar', exact: true }).click();
 
   const linha = page
     .locator('tr, [role="row"]')
-    .filter({ hasText: digitos })
+    .filter({ hasText: digitos.replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/, '$1.$2.$3-$4') })
     .first();
 
   try {
@@ -308,7 +319,7 @@ async function buscarNoEducaDF(cpf) {
   };
 
   // A célula do nome traz também a etiqueta de situação (ex.: "Normal", "Encaminhamento para INSS")
-  const [nome, ...resto] = celulaDa(EDUCADF.colunas.nome)
+  const [nome] = celulaDa(EDUCADF.colunas.nome)
     .split('\n')
     .map((t) => t.trim())
     .filter(Boolean);
@@ -346,7 +357,7 @@ async function buscarNoEducaDF(cpf) {
     nome: nome || '',
     cpf: digitos,
     classificacao: soDigitos(celulaDa(EDUCADF.colunas.classificacao)),
-    situacao: resto.join(' '),
+    situacao: celulaDa('Situação'),
     carencia,
   };
 }

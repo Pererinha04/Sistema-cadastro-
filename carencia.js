@@ -152,11 +152,10 @@ async function buscarCarencia(codigo) {
     return cel[i] || '';
   };
 
-  // Titular: o nome do professor; "Não informado" ou "-" significa que não tem.
-  const textoTitular = celulaDa(CARENCIA.colunas.titular)
-    .split('\n')
-    .map((t) => t.trim())
-    .filter(Boolean)[0] || '';
+  // A tela nova reúne professor e titular na mesma coluna; a linha "Titular:" identifica o titular.
+  const linhasProfessor = celulaDa(CARENCIA.colunas.titular).split('\n').map((t) => t.trim()).filter(Boolean);
+  const linhaTitular = linhasProfessor.find((t) => /^titular\s*:/i.test(t));
+  const textoTitular = linhaTitular ? linhaTitular.replace(/^titular\s*:\s*/i, '') : (linhasProfessor[0] || '');
   const temTitular = Boolean(textoTitular) && !/^n[aã]o informado$/i.test(textoTitular) && textoTitular !== '-';
   const titular = temTitular ? textoTitular : '';
 
@@ -177,15 +176,20 @@ async function buscarCarencia(codigo) {
   let textoHorarios = '';
 
   try {
-    await linha.locator('button').last().click({ timeout: 8000 });
-    await page.getByText(CARENCIA.menuAcoes, { exact: true }).filter({ visible: true }).first().click({ timeout: 8000 });
+    await linha.getByText(digitos, { exact: true }).click({ timeout: 8000 });
+    const painel = page
+      .locator('[role="dialog"], .modal.show, .offcanvas.show')
+      .filter({ visible: true })
+      .last();
+    await painel.waitFor({ state: 'visible', timeout: 10000 });
+    await painel.getByRole('button', { name: /Horários da carência/i }).click({ timeout: 8000 });
     await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
-    await page.waitForTimeout(1500);
+    await page.waitForTimeout(1000);
 
     textoHorarios = await page.evaluate(() => {
       const v = (el) => !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length);
-      const janela = [...document.querySelectorAll('[role="dialog"], .modal.show, .modal-dialog, .offcanvas.show')].find(v);
-      return (janela || document.body).innerText;
+      const janelas = [...document.querySelectorAll('[role="dialog"], .modal.show, .modal-dialog, .offcanvas.show')].filter(v);
+      return (janelas[janelas.length - 1] || document.body).innerText;
     });
   } catch (err) {
     avisos.push(`Não consegui abrir "${CARENCIA.menuAcoes}" (${err.message.split('\n')[0]}). Preencha turno e carga horária à mão.`);
