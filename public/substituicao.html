@@ -221,7 +221,7 @@
     </nav>
   </div>
   <h1>Substituição no SIRAC</h1>
-  <p class="sub">Digite o código da carência. O programa lê o EducaDF e, se houver titular, busca CPF e matrícula dele no SIGEP.</p>
+  <p class="sub">Digite o código da carência. O programa lê o EducaDF e, se houver titular, busca CPF e matrícula dele em Unidade Escolar > Localizar Servidor.</p>
 
   <section>
     <h2>1. Carência</h2>
@@ -374,7 +374,7 @@ $('btnBuscar').addEventListener('click', async () => {
   if (!codigo) return caixa('msgBusca', 'erro', 'Informe o código da carência.');
 
   $('btnBuscar').disabled = true;
-  caixa('msgBusca', 'aviso', 'Buscando... acompanhe na janela do navegador (se o SIGEP pedir, marque "Não sou um robô" e clique em Entrar).');
+  caixa('msgBusca', 'aviso', 'Buscando no EducaDF... acompanhe a janela do navegador.');
   try {
     const r = await fetch('/substituicao/buscar', {
       method: 'POST',

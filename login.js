@@ -1,5 +1,5 @@
 // login.js
-// Ajuda a preencher telas de login (usada pelo EducaDF e pelo SIGEP).
+// Ajuda a preencher telas de login (usada pelo EducaDF).
 // Procura um campo de senha visível na página e também dentro de quadros (iframes), e
 // marca o campo de senha e o campo de usuário (o campo de texto logo antes da senha).
 
@@ -40,7 +40,7 @@ async function acharLogin(page) {
 }
 
 // Preenche usuário e senha no quadro achado por acharLogin.
-// Com clicarEntrar, também clica em "Entrar" (no SIGEP isso fica com você, por causa do captcha).
+// Com clicarEntrar, também clica em "Entrar" (em telas com captcha, o usuário confirma manualmente).
 async function preencherLogin(frame, usuario, senha, { clicarEntrar = true } = {}) {
   const campoUsuario = frame.locator('[data-auto-login="usuario"]').first();
   const campoSenha = frame.locator('[data-auto-login="senha"]').first();

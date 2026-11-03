@@ -163,7 +163,7 @@ async function prepararTela(page) {
 // Abre Ações > Histórico de convocações da linha do candidato e conta as carências do ano
 // configurado (EDUCADF.anoHistorico). Devolve { ano, total, codigos: [{codigo, origem}], avisos, texto }.
 // Nunca derruba a busca principal: se algo falhar, volta com total null e um aviso.
-async function lerHistoricoConvocacoes(page, linha) {
+async function lerHistoricoConvocacoes(page, linha, nomeCandidato) {
   const ano = String(EDUCADF.anoHistorico || 2026);
   const avisos = [];
   const urlAntes = page.url();
@@ -171,18 +171,20 @@ async function lerHistoricoConvocacoes(page, linha) {
 
   try {
     cancelamento.verificar();
-    await linha.locator('a').first().click({ timeout: 8000 });
-    const painel = page.locator('[role="dialog"], .modal.show, .offcanvas.show').filter({ visible: true }).last();
-    await painel.waitFor({ state: 'visible', timeout: 10000 });
+    const nome = String(nomeCandidato || '').trim();
+    const alvo = nome ? linha.getByText(nome, { exact: false }).first() : linha.locator('a, button').first();
+    await alvo.scrollIntoViewIfNeeded({ timeout: 3000 }).catch(() => {});
+    await alvo.click({ timeout: 8000 });
+    // O EducaDF abre os detalhes em uma área lateral da própria página, não em um modal.
+    await page.getByText(/Convocações neste edital/i).first().waitFor({ state: 'visible', timeout: 15000 });
     await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
     await page.waitForTimeout(1500);
     cancelamento.verificar();
 
     dados = await page.evaluate(() => {
       const v = (el) => !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length);
-      const janelas = [...document.querySelectorAll('[role="dialog"], .modal.show, .modal-dialog, .offcanvas.show')].filter(v);
-      const janela = janelas[janelas.length - 1];
-      const raiz = janela || document.body;
+      // O drawer não tem role=dialog nem classe offcanvas; seus dados estão no corpo da página.
+      const raiz = document.body;
       const tabelas = [...raiz.querySelectorAll('table, [role="table"], [role="grid"]')]
         .filter(v)
         .map((tb) => ({
@@ -191,7 +193,7 @@ async function lerHistoricoConvocacoes(page, linha) {
             .map((tr) => [...tr.querySelectorAll('td, [role="cell"], [role="gridcell"]')].map((c) => c.innerText.trim()))
             .filter((cels) => cels.length),
         }));
-      return { temJanela: Boolean(janela), texto: raiz.innerText, tabelas };
+      return { temJanela: true, texto: raiz.innerText, tabelas };
     });
   } catch (err) {
     if (cancelamento.cancelado()) throw err;
@@ -222,21 +224,25 @@ async function lerHistoricoConvocacoes(page, linha) {
   const norm = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
   const reAno = new RegExp(`(^|\\D)${ano}(\\D|$)`);
 
+  // O painel novo mostra cada convocação como um bloco, não como tabela.
+  // Prioriza essa seção porque o drawer também pode conter tabelas de situação sem relação com convocações.
+  const secao = textoCompleto.split(/CONVOCAÇÕES NESTE EDITAL/i)[1]?.split(/HABILITAÇÃO E APTIDÃO/i)[0] || '';
+  if (secao) {
+    const convocacoes = [...secao.matchAll(/Carência\s+(\d{3,})[\s\S]{0,180}?(\d{2}\/\d{2}\/\d{4})/gi)]
+      .filter((m) => m[2].endsWith(ano));
+    const codigos = [];
+    for (const m of convocacoes) {
+      if (!codigos.some((x) => x.codigo === m[1])) codigos.push({ codigo: m[1], origem: 'EducaDF' });
+    }
+    return { ano, total: convocacoes.length, codigos, avisos, texto };
+  }
+
   // Ignora a tabela do próprio Banco de Aprovado, que pode estar atrás (quando não abre janela).
   const tabelas = dados.tabelas.filter((tb) => !tb.cab.some((h) => norm(h) === norm(EDUCADF.colunas.nome)));
-  // A tabela do histórico é a que tem coluna de carência; senão, a maior.
   const comCarencia = tabelas.filter((tb) => tb.cab.some((h) => /carenc/.test(norm(h))));
   const tabela = (comCarencia.length ? comCarencia : tabelas).sort((x, y) => y.linhas.length - x.linhas.length)[0];
 
   if (!tabela || !tabela.linhas.length) {
-    const secao = textoCompleto.split(/CONVOCAÇÕES NESTE EDITAL/i)[1]?.split(/HABILITAÇÃO E APTIDÃO/i)[0] || '';
-    const convocacoes = [...secao.matchAll(/Carência\s+(\d{3,})[\s\S]{0,180}?(\d{2}\/\d{2}\/\d{4})/gi)];
-    if (secao) {
-      const codigos = convocacoes
-        .filter((m) => m[2].endsWith(ano))
-        .map((m) => ({ codigo: m[1], origem: 'EducaDF' }));
-      return { ano, total: codigos.length, codigos, avisos, texto };
-    }
     avisos.push('Abri os detalhes do candidato, mas não achei a seção de convocações. Confira à mão (veja "O que li" abaixo).');
     return { ano, total: null, codigos: [], avisos, texto };
   }
@@ -347,7 +353,7 @@ async function buscarNoEducaDF(cpf) {
   }
 
   // Histórico de convocações (só o ano configurado). Falha aqui não atrapalha o resto.
-  const historico = await lerHistoricoConvocacoes(page, linha);
+  const historico = await lerHistoricoConvocacoes(page, linha, nome);
   console.log(
     `EducaDF: histórico de convocações ${historico.ano}: ${historico.total === null ? 'não consegui contar' : `${historico.total} carência(s)`}.`
   );

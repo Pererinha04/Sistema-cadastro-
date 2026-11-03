@@ -1,7 +1,7 @@
 // cancelamento.js
 // Permite cancelar uma busca em andamento (botão "Cancelar busca" da tela).
 // Cada busca recebe um número; "cancelar" marca todas as buscas já iniciadas como canceladas.
-// As esperas (edudf.js, sigep.js, carencia.js) chamam verificar() e param com o erro "Busca cancelada.".
+// As esperas (edudf.js, localizarServidor.js, carencia.js) chamam verificar() e param com o erro "Busca cancelada.".
 
 const { AsyncLocalStorage } = require('async_hooks');
 

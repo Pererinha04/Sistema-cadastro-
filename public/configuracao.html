@@ -84,11 +84,6 @@
     <label for="EDUCADF_SENHA">Senha</label>
     <input id="EDUCADF_SENHA" type="password">
 
-    <h2>SIGEP</h2>
-    <label for="SIGEP_SENHA">Senha</label>
-    <input id="SIGEP_SENHA" type="password">
-    <p class="dica">O usuário do SIGEP é o mesmo do EducaDF.</p>
-
     <h2>SIRAC</h2>
     <label for="SIRAC_USUARIO">Usuário</label>
     <input id="SIRAC_USUARIO" type="text">
@@ -103,7 +98,7 @@
 
 <script>
 const $ = (id) => document.getElementById(id);
-const SENHAS = ['EDUCADF_SENHA', 'SIGEP_SENHA', 'SIRAC_SENHA'];
+const SENHAS = ['EDUCADF_SENHA', 'SIRAC_SENHA'];
 
 function mostrar(texto, tipo) { $('status').textContent = texto; $('status').className = tipo || ''; }
 
@@ -123,7 +118,7 @@ $('form').addEventListener('submit', async (e) => {
   e.preventDefault();
   $('salvar').disabled = true;
   const valores = {};
-  for (const id of ['EDUCADF_USUARIO', 'EDUCADF_SENHA', 'SIGEP_SENHA', 'SIRAC_USUARIO', 'SIRAC_SENHA']) valores[id] = $(id).value;
+  for (const id of ['EDUCADF_USUARIO', 'EDUCADF_SENHA', 'SIRAC_USUARIO', 'SIRAC_SENHA']) valores[id] = $(id).value;
   try {
     const r = await fetch('/configuracao', {
       method: 'POST',

@@ -1,6 +1,6 @@
 // navegador.js
 // Um navegador só, com perfil salvo (o login fica gravado na pasta de dados do programa),
-// e uma aba por sistema (EducaDF, SIGEP, SIRAC).
+// e uma aba por sistema (EducaDF, SIRAC).
 
 const path = require('path');
 const { chromium } = require('playwright');

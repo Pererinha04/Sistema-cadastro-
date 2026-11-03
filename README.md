@@ -31,7 +31,7 @@ Sistema-cadastro-/
 ├── navegador.js        # Módulo relacionado ao navegador
 ├── login.js            # Módulo de login
 ├── sirac.js            # Módulo de automação
-├── sigep.js             # Módulo de automação
+├── localizarServidor.js # Módulo de automação
 ├── edudf.js             # Módulo de automação
 ├── carencia.js          # Funcionalidades específicas
 ├── substituicao.js      # Funcionalidades específicas

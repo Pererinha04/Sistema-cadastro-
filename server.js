@@ -15,13 +15,13 @@ try {
   console.log(`Não consegui ler o arquivo .env em ${DADOS} (${err.code || err.message}).`);
 }
 
-const VARIAVEIS = ['EDUCADF_USUARIO', 'EDUCADF_SENHA', 'SIGEP_SENHA', 'SIRAC_SENHA'];
+const VARIAVEIS = ['EDUCADF_USUARIO', 'EDUCADF_SENHA', 'SIRAC_SENHA'];
 const faltando = () => VARIAVEIS.filter((v) => !process.env[v]);
 
 const express = require('express');
 const { preencherAdmissao } = require('./sirac');
 const { buscarNoEducaDF } = require('./edudf');
-const { buscarNoSigep, buscarServidorPorNome } = require('./sigep');
+const { buscarNoLocalizarServidor, buscarServidorPorNome } = require('./localizarServidor');
 const { buscarCarencia, buscarPeriodoCarencia } = require('./carencia');
 const { preencherSubstituicao } = require('./substituicao');
 const cancelamento = require('./cancelamento');
@@ -40,8 +40,8 @@ const soDigitos = (s) => String(s || '').replace(/\D/g, '');
 // programa em andamento (não precisa fechar e abrir de novo).
 
 const ARQ_ENV = path.join(DADOS, '.env');
-const CHAVES_ENV = ['EDUCADF_USUARIO', 'EDUCADF_SENHA', 'SIGEP_SENHA', 'SIRAC_USUARIO', 'SIRAC_SENHA'];
-const SO_SENHAS = ['EDUCADF_SENHA', 'SIGEP_SENHA', 'SIRAC_SENHA'];
+const CHAVES_ENV = ['EDUCADF_USUARIO', 'EDUCADF_SENHA', 'SIRAC_USUARIO', 'SIRAC_SENHA'];
+const SO_SENHAS = ['EDUCADF_SENHA', 'SIRAC_SENHA'];
 
 function lerEnv() {
   try {
@@ -122,36 +122,36 @@ const mensagem = (err) =>
         .split('Call log')[0]
         .trim();
 
-// Busca os dados do candidato pelo CPF: EducaDF (nome, classificação) e SIGEP (matrícula, nascimento).
-// Se um dos sistemas falhar, devolve o que conseguiu e um aviso, para você completar à mão.
+// Busca nome e classificação no Banco de Aprovados e matrícula, nascimento e sexo em Localizar Servidor.
+// Se uma etapa falhar, devolve os dados que conseguiu e um aviso para completar à mão.
 // Obs.: só registra mensagens de erro no terminal, nunca os dados pessoais.
 app.post('/buscar', async (req, res) => {
   const cpf = soDigitos(req.body.cpf);
   if (cpf.length !== 11) return res.status(400).json({ ok: false, erro: 'O CPF precisa ter 11 dígitos.' });
 
-  const resultado = { ok: true, nome: '', classificacao: '', situacao: '', matriculas: [], dataNascimento: '', historico: null, avisos: [], notas: [] };
+  const resultado = { ok: true, nome: '', classificacao: '', situacao: '', matriculas: [], dataNascimento: '', sexo: '', historico: null, avisos: [], notas: [] };
 
-  // Primeiro o EducaDF, depois o SIGEP (um de cada vez).
   try {
     const e = await buscarNoEducaDF(cpf);
     Object.assign(resultado, { nome: e.nome, classificacao: e.classificacao, situacao: e.situacao, carencia: e.carencia, historico: e.historico });
   } catch (err) {
     if (cancelamento.cancelado()) return res.json({ ok: false, cancelado: true, erro: 'Busca cancelada.' });
-    console.error('EducaDF:', err.message);
-    resultado.avisos.push(`EducaDF: ${mensagem(err)}`);
+    console.error('EducaDF (Banco de Aprovados):', err.message);
+    resultado.avisos.push(`EducaDF (Banco de Aprovados): ${mensagem(err)}`);
   }
 
   if (cancelamento.cancelado()) return res.json({ ok: false, cancelado: true, erro: 'Busca cancelada.' });
 
   try {
-    const s = await buscarNoSigep(cpf);
-    Object.assign(resultado, { matriculas: s.matriculas, dataNascimento: s.dataNascimento });
-    if (s.aviso) resultado.avisos.push(s.aviso);
-    if (s.nota) resultado.notas.push(s.nota);
+    const nomeBusca = resultado.nome || String(req.body.nome || '').trim();
+    if (!nomeBusca) throw new Error('Não recebi o nome do servidor para pesquisar em Localizar Servidor.');
+    const servidor = await buscarNoLocalizarServidor(nomeBusca, cpf);
+    Object.assign(resultado, { nome: servidor.nome || nomeBusca, matriculas: servidor.matriculas, dataNascimento: servidor.dataNascimento, sexo: servidor.sexo });
+    resultado.avisos.push(...servidor.avisos);
   } catch (err) {
     if (cancelamento.cancelado()) return res.json({ ok: false, cancelado: true, erro: 'Busca cancelada.' });
-    console.error('SIGEP:', err.message);
-    resultado.avisos.push(`SIGEP: ${mensagem(err)}`);
+    console.error('EducaDF (Localizar Servidor):', err.message);
+    resultado.avisos.push(`EducaDF (Localizar Servidor): ${mensagem(err)}`);
   }
 
   // Avisa na tela quando o login automático está desligado por falta de dados no .env.
@@ -213,8 +213,7 @@ app.post('/preencher', async (req, res) => {
 
 // ---------- Substituição ----------
 
-// Busca a carência no EducaDF (titular, turno, carga horária) e, se houver titular,
-// o nome, CPF e matrícula dele no SIGEP. Se o SIGEP falhar, devolve o que conseguiu.
+// Busca a carência no EducaDF e localiza o titular pela tela Unidade Escolar > Localizar Servidor.
 app.post('/substituicao/buscar', async (req, res) => {
   const codigo = soDigitos(req.body.codigo);
   if (!codigo) return res.status(400).json({ ok: false, erro: 'Informe o código da carência.' });
@@ -263,8 +262,8 @@ app.post('/substituicao/buscar', async (req, res) => {
       Object.assign(resultado, { nome: s.nome, cpf: s.cpf, matricula: s.matricula, matriculas: s.matriculas });
       resultado.avisos.push(...s.avisos);
     } catch (err) {
-      console.error('SIGEP (titular):', err.message);
-      resultado.avisos.push(`SIGEP: ${mensagem(err)} Digite CPF e matrícula do titular à mão.`);
+      console.error('EducaDF (titular):', err.message);
+      resultado.avisos.push(`EducaDF (Localizar Servidor): ${mensagem(err)} Digite CPF e matrícula do titular à mão.`);
     }
   }
 
@@ -315,7 +314,7 @@ const servidor = app.listen(PORTA, '127.0.0.1', () => {
   console.log(
     sem.length
       ? `ATENÇÃO: não achei no .env: ${sem.join(', ')}. O login automático fica desligado.`
-      : '.env lido: login automático ativo (EducaDF, SIGEP e SIRAC).'
+      : '.env lido: login automático ativo (EducaDF e SIRAC).'
   );
 });
 

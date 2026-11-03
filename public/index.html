@@ -349,7 +349,7 @@
     </div>
 
     <h1>Preencher admissão no SIRAC</h1>
-    <p class="sub">Digite o CPF e clique em "Buscar dados". O programa lê o EducaDF e o SIGEP. Confira os campos, escolha o sexo e clique em "Preencher no SIRAC"; depois você confere lá e salva.</p>
+    <p class="sub">Digite o CPF e clique em "Buscar dados". O programa pesquisa o Banco de Aprovados e Localizar Servidor no EducaDF. Confira os campos e clique em "Preencher no SIRAC"; depois você confere lá e salva.</p>
 
     <form id="form" novalidate>
       <div class="grade">
@@ -370,13 +370,13 @@
         </div>
 
         <div>
-          <label for="matricula"><svg class="ico" aria-hidden="true"><use href="#i-matricula"/></svg>Matrícula <span class="origem">(SIGEP)</span></label>
+          <label for="matricula"><svg class="ico" aria-hidden="true"><use href="#i-matricula"/></svg>Matrícula <span class="origem">(EducaDF)</span></label>
           <input id="matricula" name="matricula" type="text" inputmode="numeric" autocomplete="off" list="matriculas" placeholder="Digite a matrícula" required>
           <datalist id="matriculas"></datalist>
         </div>
 
         <div>
-          <label for="dataNascimento"><svg class="ico" aria-hidden="true"><use href="#i-calendario"/></svg>Data de nascimento <span class="origem">(SIGEP)</span></label>
+          <label for="dataNascimento"><svg class="ico" aria-hidden="true"><use href="#i-calendario"/></svg>Data de nascimento <span class="origem">(EducaDF)</span></label>
           <input id="dataNascimento" name="dataNascimento" type="date" required>
         </div>
 
@@ -607,7 +607,7 @@
 
       travar(true);
       mostrarHistorico(null);
-      mostrar('Buscando no EducaDF e no SIGEP… No SIGEP, marque "Não sou um robô" e clique em Entrar na janela que abriu.');
+      mostrar('Buscando no Banco de Aprovados e em Unidade Escolar > Localizar Servidor no EducaDF…');
 
       try {
         controle = new AbortController();
@@ -615,7 +615,7 @@
           signal: controle.signal,
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ cpf: cpf.value }),
+          body: JSON.stringify({ nome: document.getElementById('nome').value, cpf: cpf.value }),
         });
         const r = await resposta.json();
         if (r.cancelado) return mostrar('Busca cancelada.');
@@ -625,6 +625,10 @@
         if (r.nome) document.getElementById('nome').value = r.nome;
         if (r.classificacao) document.getElementById('classificacao').value = r.classificacao;
         if (r.dataNascimento) document.getElementById('dataNascimento').value = r.dataNascimento;
+        if (r.sexo) {
+          const sexo = document.querySelector(`input[name="sexo"][value="${r.sexo}"]`);
+          if (sexo) sexo.checked = true;
+        }
         // O código da carência lido no Banco de Aprovado já vai para o campo (você pode trocar).
         if (r.carencia) codigoCarencia.value = r.carencia;
 
@@ -641,15 +645,14 @@
         matricula.value = r.matriculas.length === 1 ? r.matriculas[0] : '';
 
         const notas = [];
-        if (r.matriculas.length > 1) notas.push('O SIGEP tem mais de uma matrícula: escolha na lista do campo Matrícula.');
-        if (r.situacao && r.situacao.toLowerCase() !== 'normal') notas.push(`Situação no EducaDF: ${r.situacao}.`);
+        if (r.matriculas.length > 1) notas.push('O EducaDF encontrou mais de uma matrícula: escolha a correta na lista do campo Matrícula.');
         notas.push(...r.avisos);
         if (r.notas) notas.push(...r.notas);
 
         if (r.avisos.length) {
           mostrar(`Busca incompleta. ${notas.join(' ')} Complete os campos em branco à mão.`, 'erro');
         } else {
-          mostrar(`Dados carregados. ${notas.join(' ')} Escolha o sexo e confira tudo.`, 'ok');
+          mostrar(`Dados carregados. ${notas.join(' ')} Confira tudo antes de preencher.`, 'ok');
         }
       } catch (err) {
         if (err.name === 'AbortError') mostrar('Busca cancelada.');

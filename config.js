@@ -74,12 +74,8 @@ module.exports = {
     },
   },
 
-  // Tela "Localizar Servidor" do SIGEP (02.CADASTRO).
-  URL_SIGEP: 'https://sigep.se.df.gov.br/',
-  SIGEP: {
-    placeholderBusca: 'INFORME A MATRÍCULA',
-    menuBusca: /02\.?\s*CADASTRO/i,
-  },
+  // Unidade Escolar > Localizar Servidor no EducaDF.
+  URL_LOCALIZAR_SERVIDOR: 'https://educadf.se.df.gov.br/cadastro-escola/modulos/cadastro/localizar-servidor',
 
   // Etapa 1 e 2 (telas de escolha)
   JURISDICIONADO: 'SEE',

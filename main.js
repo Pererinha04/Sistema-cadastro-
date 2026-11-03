@@ -33,7 +33,6 @@ for (const nivel of ['log', 'error']) {
 const MODELO_ENV = `# Este arquivo é preenchido pela tela "Configurações" do programa.
 EDUCADF_USUARIO=
 EDUCADF_SENHA=
-SIGEP_SENHA=
 SIRAC_USUARIO=
 SIRAC_SENHA=
 `;
@@ -140,7 +139,7 @@ if (!app.requestSingleInstanceLock()) {
     });
   });
 
-  // Fecha também o navegador dos sistemas (EducaDF, SIGEP, SIRAC) ao sair.
+  // Fecha também o navegador dos sistemas (EducaDF, SIRAC) ao sair.
   app.on('before-quit', async (e) => {
     if (saindo) return;
     e.preventDefault();
