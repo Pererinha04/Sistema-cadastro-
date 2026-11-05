@@ -15,25 +15,35 @@ const { preencherCampo } = require('./sirac');
 // responder (o "networkidle" do navegador ainda soma 500 ms de silêncio a cada espera).
 function vigiarRede(page) {
   if (page.__vigiaRede) return page.__vigiaRede;
-  const v = { abertas: new Set(), ultimo: Date.now() };
+  // Só acompanhamos AJAX. Recursos, analytics e conexões persistentes não devem
+  // segurar o preenchimento da substituição.
+  const v = { abertas: new Map(), ultimo: Date.now() };
   const fim = (r) => {
+    if (!v.abertas.has(r)) return;
     v.abertas.delete(r);
     v.ultimo = Date.now();
   };
-  page.on('request', (r) => v.abertas.add(r));
+  page.on('request', (r) => {
+    if (['xhr', 'fetch'].includes(r.resourceType())) v.abertas.set(r, Date.now());
+  });
   page.on('requestfinished', fim);
   page.on('requestfailed', fim);
   page.__vigiaRede = v;
   return v;
 }
 
-async function aguardar(page, limiteMs = 8000, quietoMs = 120) {
+async function aguardar(page, limiteMs = 2500, quietoMs = 120) {
   const v = vigiarRede(page);
-  await page.waitForTimeout(60); // dá tempo da requisição disparada pela ação começar
+  await page.waitForTimeout(40); // dá tempo da requisição disparada pela ação começar
   const inicio = Date.now();
   while (Date.now() - inicio < limiteMs) {
+    // Alguns endpoints ficam pendurados; não podem atrasar este campo nem os próximos.
+    const agora = Date.now();
+    for (const [r, iniciou] of v.abertas) {
+      if (agora - iniciou > 2200) v.abertas.delete(r);
+    }
     if (v.abertas.size === 0 && Date.now() - v.ultimo >= quietoMs) return;
-    await page.waitForTimeout(40);
+    await page.waitForTimeout(35);
   }
 }
 const { SUBSTITUICAO } = require('./config');
@@ -175,19 +185,22 @@ async function selecionarFlex(select, candidatos) {
 // marca de novo e tenta outra vez. antes: algo a esperar depois de achar a lista (ex.: opções carregarem).
 async function escolherNaLista(page, chave, rotulo, candidatos, antes) {
   let erro = '';
-  for (let tentativa = 0; tentativa < 4; tentativa++) {
-    const campo = await esperarCampo(page, chave, rotulo, 'select', 0, 10000);
+  for (let tentativa = 0; tentativa < 2; tentativa++) {
+    // Os selects renderizados são encontrados quase imediatamente. Um limite curto
+    // evita que postbacks incompletos acumulem vários timeouts em cada repetição.
+    const campo = await esperarCampo(page, chave, rotulo, 'select', 0, tentativa === 0 ? 5000 : 2500);
     if (!campo) return { ok: false, naoAchou: true };
     try {
       if (antes) {
-        await antes();
+        const pronto = await antes();
+        if (pronto === false) return { ok: false, naoCarregou: true };
         await marcar(page, chave, rotulo, 'select');
       }
       return await selecionarFlex(campoMarcado(page, chave), candidatos);
     } catch (err) {
       erro = err.message.split('\n')[0];
       console.log(`SIRAC substituição: ${rotulo} mudou no meio da escolha (tentativa ${tentativa + 1}); tentando de novo.`);
-      await aguardar(page);
+      await aguardar(page, 1200);
     }
   }
   return { ok: false, erro };
@@ -216,14 +229,17 @@ function candidatosCarga(carga) {
 }
 
 // Espera a lista de especialidades carregar (ela depende do Cargo escolhido).
-async function esperarOpcoes(page, chave, minimo = 2, ms = 10000) {
+async function esperarOpcoes(page, chave, minimo = 2, ms = 5000, atualizarCampo) {
   const inicio = Date.now();
   while (Date.now() - inicio < ms) {
+    // O SIRAC substitui o <select> durante o postback. Atualiza a marcação para
+    // acompanhar o novo elemento, em vez de esperar o select antigo até estourar timeout.
+    if (atualizarCampo) await atualizarCampo();
     const n = await campoMarcado(page, chave)
       .evaluate((s) => s.options.length)
       .catch(() => 0);
     if (n >= minimo) return true;
-    await page.waitForTimeout(100);
+    await page.waitForTimeout(150);
   }
   return false;
 }
@@ -329,7 +345,11 @@ async function preencherCarga(page, carga) {
 
       const ehLista = await campo.evaluate((el) => el.tagName === 'SELECT');
       if (ehLista) {
-        await esperarOpcoes(page, 'carga', 2, 10000); // as opções podem depender de Turno/Cargo
+        const opcoesCarregaram = await esperarOpcoes(page, 'carga', 2, 5000, () => acharCampoCarga(page, 100)); // depende de Turno/Cargo
+        if (!opcoesCarregaram) {
+          motivo = 'as opções da carga horária não carregaram após 5 segundos';
+          return { ok: false, motivo };
+        }
         campo = (await acharCampoCarga(page, 3000)) || campo;
         const r = await selecionarFlex(campo, [`re:(^|\\D)0*${num}(\\D|$)`]);
         if (!r.ok) {
@@ -441,6 +461,8 @@ async function preencherSubstituicao(d) {
       pendencias.push(`${nome} (não achei o campo)`);
     } else if (r.erro) {
       pendencias.push(`${nome} (a tela do SIRAC mudou no meio; escolha à mão)`);
+    } else if (r.naoCarregou) {
+      pendencias.push(`${nome} (as opções do SIRAC não carregaram em 5 segundos; confira e escolha à mão)`);
     } else {
       pendencias.push(`${nome} (não achei ${descricao}; opções: ${(r.opcoes || []).join(' | ') || 'nenhuma carregada'})`);
     }
@@ -463,7 +485,7 @@ async function preencherSubstituicao(d) {
   const especialidade = String(d.especialidade || '').trim() || (d.temTitular ? SUBSTITUICAO.especialidadeComTitular : '');
   if (especialidade) {
     await lista('especialidade', 'Especialidade / Disciplina', 'Especialidade', [especialidade], `"${especialidade}"`, {
-      antes: () => esperarOpcoes(page, 'especialidade'),
+      antes: () => esperarOpcoes(page, 'especialidade', 2, 5000, () => marcar(page, 'especialidade', 'Especialidade / Disciplina', 'select')),
       esperar: true,
       mostrar: true,
     });
