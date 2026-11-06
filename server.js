@@ -34,6 +34,7 @@ app.use(['/buscar', '/carencia/datas'], (req, res, next) => cancelamento.executa
 app.use(express.static(path.join(__dirname, 'public')));
 
 const soDigitos = (s) => String(s || '').replace(/\D/g, '');
+const pareceAno = (s) => /^(19|20)\d{2}$/.test(String(s || ''));
 
 // ---------- Configurações (.env) ----------
 // Tela "Configurações": grava usuários e senhas no .env da pasta de dados e já atualiza o
@@ -169,6 +170,7 @@ app.post('/buscar', async (req, res) => {
 app.post('/carencia/datas', async (req, res) => {
   const codigo = soDigitos(req.body.codigo);
   if (!codigo) return res.status(400).json({ ok: false, erro: 'Informe o código da carência.' });
+  if (pareceAno(codigo)) return res.status(400).json({ ok: false, erro: `“${codigo}” parece ser um ano, não um código de carência. Confira o código EducaDF.` });
   try {
     const c = await buscarPeriodoCarencia(codigo);
     res.json({ ok: true, ...c });
@@ -217,6 +219,7 @@ app.post('/preencher', async (req, res) => {
 app.post('/substituicao/buscar', async (req, res) => {
   const codigo = soDigitos(req.body.codigo);
   if (!codigo) return res.status(400).json({ ok: false, erro: 'Informe o código da carência.' });
+  if (pareceAno(codigo)) return res.status(400).json({ ok: false, erro: `“${codigo}” parece ser um ano, não um código de carência. Informe o ID da carência.` });
 
   const resultado = {
     ok: true,

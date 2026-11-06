@@ -9,6 +9,9 @@ const { URL_EDUCADF, EDUCADF } = require('./config');
 const cancelamento = require('./cancelamento');
 
 const soDigitos = (s) => String(s || '').replace(/\D/g, '');
+// Os IDs usados em Gestão de Carência têm pelo menos 5 dígitos. Evita interpretar
+// o ano (por exemplo, "Carência 2026") como se fosse o identificador da carência.
+const codigoCarenciaValido = (s) => /^\d{5,}$/.test(String(s || '')) && !/^(19|20)\d{2}$/.test(String(s || ''));
 
 // Tempo que o programa espera você chegar ao Banco de Aprovado (clicar em Servidor,
 // fazer o login se precisar e abrir Modulação > Banco de Aprovado).
@@ -232,7 +235,9 @@ async function lerHistoricoConvocacoes(page, linha, nomeCandidato) {
       .filter((m) => m[2].endsWith(ano));
     const codigos = [];
     for (const m of convocacoes) {
-      if (!codigos.some((x) => x.codigo === m[1])) codigos.push({ codigo: m[1], origem: 'EducaDF' });
+      if (codigoCarenciaValido(m[1]) && !codigos.some((x) => x.codigo === m[1])) {
+        codigos.push({ codigo: m[1], origem: 'EducaDF' });
+      }
     }
     return { ano, total: convocacoes.length, codigos, avisos, texto };
   }
@@ -262,8 +267,10 @@ async function lerHistoricoConvocacoes(page, linha, nomeCandidato) {
     total += 1;
 
     const status = iStatus >= 0 ? (cels[iStatus] || '').replace(/\s+/g, ' ').trim() : '';
-    const edu = iEdu >= 0 ? soDigitos(cels[iEdu]) : '';
-    const sigep = iSigep >= 0 ? soDigitos(cels[iSigep]) : '';
+    const eduBruto = iEdu >= 0 ? soDigitos(cels[iEdu]) : '';
+    const sigepBruto = iSigep >= 0 ? soDigitos(cels[iSigep]) : '';
+    const edu = codigoCarenciaValido(eduBruto) ? eduBruto : '';
+    const sigep = codigoCarenciaValido(sigepBruto) ? sigepBruto : '';
     // Prefere o código do EducaDF (é o usado na Gestão de Carência); sem ele, mostra o do SIGEP.
     const escolhido = edu ? { codigo: edu, origem: 'EducaDF' } : sigep ? { codigo: sigep, origem: 'SIGEP' } : null;
     if (escolhido && !codigos.some((x) => x.codigo === escolhido.codigo)) codigos.push({ ...escolhido, status });
@@ -336,10 +343,14 @@ async function buscarNoEducaDF(cpf) {
   let carencia = '';
   try {
     const texto = celulaDa(EDUCADF.colunas.carencia);
-    const codigos = [...texto.matchAll(/([A-Za-zÀ-ú]+)?\s*[:\-]?\s*(\d{3,})/g)].map((m) => ({
-      origem: (m[1] || '').toLowerCase(),
+    const marcados = [...texto.matchAll(/\b(EducaDF|SIGEP)\s*[:#\-]?\s*(\d{3,})/gi)].map((m) => ({
+      origem: m[1].toLowerCase(),
       numero: m[2],
     }));
+    const codigos = (marcados.length ? marcados : [...texto.matchAll(/\bCar[eê]ncia\s+(\d{3,})/gi)].map((m) => ({
+      origem: '',
+      numero: m[1],
+    }))).filter((c) => codigoCarenciaValido(c.numero));
     const origem = String(EDUCADF.origemCarencia || '').toLowerCase();
     const escolhido = (origem && codigos.find((c) => c.origem === origem)) || codigos[0];
     carencia = escolhido ? escolhido.numero : '';
@@ -354,9 +365,15 @@ async function buscarNoEducaDF(cpf) {
 
   // Histórico de convocações (só o ano configurado). Falha aqui não atrapalha o resto.
   const historico = await lerHistoricoConvocacoes(page, linha, nome);
+  if (!codigoCarenciaValido(carencia)) {
+    const doHistorico = historico.codigos.find((c) => c.origem === 'EducaDF' && codigoCarenciaValido(c.codigo))
+      || historico.codigos.find((c) => codigoCarenciaValido(c.codigo));
+    carencia = doHistorico ? doHistorico.codigo : '';
+  }
   console.log(
     `EducaDF: histórico de convocações ${historico.ano}: ${historico.total === null ? 'não consegui contar' : `${historico.total} carência(s)`}.`
   );
+  console.log(`EducaDF: código da carência para consulta: ${carencia || 'não encontrado'}.`);
 
   return {
     historico,
