@@ -6,58 +6,30 @@ const { URL_LOCALIZAR_SERVIDOR } = require('./config');
 const cancelamento = require('./cancelamento');
 
 const soDigitos = (s) => String(s || '').replace(/\D/g, '');
-const normaliza = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().replace(/\s+/g, ' ').trim();
 const ESPERA_MS = 180000;
 
-// A tela nova tem uma busca única com resultados enquanto digita. O campo antigo
-// de nome/matrícula/CPF ainda é reconhecido para instalações que não receberam a atualização.
+// A tela atual tem uma única caixa de busca larga. Os filtros Escola/Cargo e a
+// busca lateral são menores; se a caixa principal não for reconhecida, não adivinhamos.
 async function campoBuscaServidor(page) {
-  // Na interface nova, o indício está junto da busca principal. Encontra o campo
-  // pelo texto da própria tela para não confundir com os filtros de Escola/Cargo
-  // nem com a busca lateral do menu.
   const marcado = await page.evaluate(() => {
-    const normaliza = (s) => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
-    const possuiDica = (el) => {
-      const texto = [...el.childNodes].filter((n) => n.nodeType === Node.TEXT_NODE).map((n) => n.textContent).join(' ');
-      const t = normaliza(texto);
-      return t.includes('nome ou matricula') && t.includes('resultado enquanto digita');
-    };
-    const dica = [...document.querySelectorAll('body *')].find(possuiDica);
-    if (!dica) return false;
     document.querySelectorAll('[data-auto-busca-servidor]').forEach((el) => el.removeAttribute('data-auto-busca-servidor'));
-    for (let pai = dica; pai && pai !== document.body; pai = pai.parentElement) {
-      const campo = pai.matches('input:not([type="hidden"]), textarea, [contenteditable="true"]')
-        ? pai
-        : pai.querySelector('input:not([type="hidden"]), textarea, [contenteditable="true"]');
-      if (campo) {
-        campo.setAttribute('data-auto-busca-servidor', 'true');
-        return true;
-      }
-    }
-    return false;
+    const visivel = (el) => {
+      const r = el.getBoundingClientRect();
+      const s = getComputedStyle(el);
+      return r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none';
+    };
+    const campos = [...document.querySelectorAll('input:not([type="hidden"]), textarea, [contenteditable="true"]')]
+      .filter((el) => visivel(el)
+        && !el.closest('aside, nav, [role="navigation"], [class*="sidebar"], [class*="side-nav"], [class*="sidenav"]')
+        && !/localizar\.\.\./i.test(el.getAttribute('placeholder') || ''))
+      .map((el) => ({ el, largura: el.getBoundingClientRect().width }))
+      .sort((a, b) => b.largura - a.largura);
+    const principal = campos.find((c) => c.largura >= 400)?.el;
+    if (!principal) return false;
+    principal.setAttribute('data-auto-busca-servidor', 'true');
+    return true;
   }).catch(() => false);
-  if (marcado) return page.locator('[data-auto-busca-servidor="true"]').first();
-
-  // Compatibilidade com versões anteriores: aceita apenas campos identificados
-  // explicitamente por nome, matrícula ou rótulo acessível. Nunca adivinha Escola.
-  const inputs = page.locator('input:visible');
-  const metadados = await inputs.evaluateAll((els) => els.map((el) => ({
-    placeholder: el.getAttribute('placeholder') || '',
-    name: el.getAttribute('name') || '',
-    id: el.id || '',
-    aria: el.getAttribute('aria-label') || '',
-    lateral: Boolean(el.closest('aside, nav, [role="navigation"], [class*="sidebar"], [class*="side-nav"], [class*="sidenav"]')),
-  })));
-  const antigoMatricula = metadados.findIndex((m) => {
-    const texto = `${m.placeholder} ${m.name} ${m.id} ${m.aria}`;
-    return /matr[ií]cula/i.test(texto) && !/nome\s+ou\s+matr[ií]cula|resultado enquanto digita/i.test(texto);
-  });
-  if (antigoMatricula > 0) return inputs.nth(antigoMatricula - 1);
-  const candidatos = metadados.map((m, i) => ({ ...m, i })).filter((m) =>
-    !m.lateral && !/localizar\.\.\./i.test(m.placeholder) && /nome|servidor/i.test(`${m.placeholder} ${m.name} ${m.id} ${m.aria}`)
-  );
-  const indice = candidatos[0]?.i ?? -1;
-  return indice >= 0 ? inputs.nth(indice) : null;
+  return marcado ? page.locator('[data-auto-busca-servidor="true"]').first() : null;
 }
 
 async function abrirPeloMenu(page) {
@@ -163,60 +135,31 @@ async function buscarServidor(nome, cpf = '') {
   await prepararTela(page);
   cancelamento.verificar();
 
-  // Se a tela antiga ainda estiver disponível, mantém o fluxo de três campos.
-  const buscaPrincipal = await campoBuscaServidor(page);
-  const telaNova = Boolean(await buscaPrincipal?.getAttribute('data-auto-busca-servidor').catch(() => null));
-  const campos = page.locator('input:visible');
-  const metadados = await campos.evaluateAll((els) => els.map((el) => ({
-    placeholder: el.getAttribute('placeholder') || '',
-    name: el.getAttribute('name') || '',
-    id: el.id || '',
-    aria: el.getAttribute('aria-label') || '',
-  })));
-  const indiceMatricula = metadados.findIndex((m) => {
-    const texto = `${m.placeholder} ${m.name} ${m.id} ${m.aria}`;
-    return /matr[ií]cula/i.test(texto) && !/nome\s+ou\s+matr[ií]cula|resultado enquanto digita/i.test(texto);
-  });
-  let abrirFicha;
-  if (!telaNova && indiceMatricula > 0 && indiceMatricula + 1 < metadados.length) {
-    await campos.nth(indiceMatricula - 1).fill(nomeBusca);
-    if (cpfBusca) await campos.nth(indiceMatricula + 1).fill(cpfBusca);
-    await page.getByRole('button', { name: /Filtrar/i }).first().click({ timeout: 8000 });
-    const linhas = page.locator('tr, [role="row"]');
-    const limite = Date.now() + 20000;
-    let correspondentes = [];
-    while (Date.now() < limite) {
-      cancelamento.verificar();
-      const quantidade = await linhas.count().catch(() => 0);
-      for (let i = 0; i < quantidade; i++) {
-        const linha = linhas.nth(i);
-        const texto = await linha.innerText().catch(() => '');
-        const bate = cpfBusca
-          ? soDigitos(texto).includes(cpfBusca)
-          : normaliza(texto).includes(normaliza(nomeBusca));
-        if (bate) correspondentes.push(linha);
-      }
-      if (correspondentes.length) break;
-      await page.waitForTimeout(300);
-    }
-    if (!correspondentes.length) {
-      throw new Error(cpfBusca ? 'Servidor não encontrado no EducaDF para esse nome e CPF.' : 'Servidor não encontrado no EducaDF pelo nome.');
-    }
-    const primeiraLinha = correspondentes[0];
-    const link = primeiraLinha.locator('a').first();
-    abrirFicha = await link.count() ? link : primeiraLinha.getByText(nomeBusca, { exact: false }).first();
-  } else {
-    const busca = buscaPrincipal;
-    if (!busca) throw new Error('Não encontrei o campo de busca por nome na tela Localizar Servidor.');
-    await busca.fill(nomeBusca);
-    const resultado = page.getByText(nomeBusca, { exact: false }).filter({ visible: true }).first();
-    try {
-      await resultado.waitFor({ state: 'visible', timeout: 15000 });
-    } catch {
-      throw new Error(`Servidor não encontrado no EducaDF pelo nome “${nomeBusca}”.`);
-    }
-    abrirFicha = resultado;
+  if (!/[A-Za-zÀ-ú]/.test(nomeBusca)) {
+    throw new Error('A busca de Localizar Servidor precisa receber o nome do servidor, não o CPF.');
   }
+
+  // Limpa filtros que possam ter ficado com o CPF após uma tentativa anterior.
+  const limparFiltros = page.getByText(/^Limpar$/i).filter({ visible: true }).first();
+  if (await limparFiltros.count().catch(() => 0)) {
+    await limparFiltros.click({ timeout: 3000 }).catch(() => {});
+  }
+
+  // A busca nova aceita só nome/matrícula. CPF nunca é escrito em campo algum desta tela.
+  const buscaPrincipal = await campoBuscaServidor(page);
+  if (!buscaPrincipal) {
+    throw new Error('Não encontrei a caixa principal “nome ou matrícula” do Localizar Servidor. Nenhum filtro foi preenchido.');
+  }
+  console.log('EducaDF: pesquisando Localizar Servidor pelo nome na caixa principal.');
+  await buscaPrincipal.fill(nomeBusca);
+
+  const resultado = page.getByText(nomeBusca, { exact: false }).filter({ visible: true }).first();
+  try {
+    await resultado.waitFor({ state: 'visible', timeout: 15000 });
+  } catch {
+    throw new Error(`Servidor não encontrado no EducaDF pelo nome “${nomeBusca}”.`);
+  }
+  const abrirFicha = resultado;
 
   await abrirFicha.click({ timeout: 8000 });
   await page.waitForURL(/\/(?:localizar-servidor\/ficha|cadastro\/ficha-unificada)\//, { timeout: 15000 });

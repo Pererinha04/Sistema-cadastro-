@@ -3,4 +3,5 @@ node_modules/
 perfil-chrome/
 perfil-sirac/
 dist/
+/build-corrigido/
 log.txt
