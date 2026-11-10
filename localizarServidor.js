@@ -118,6 +118,73 @@ async function lerFicha(page) {
   return { ...dadosPessoais, matricula };
 }
 
+// No Localizar Servidor o resultado é uma linha/cartão clicável que contém o nome.
+// Marcar o próprio link/linha evita clicar em ocorrências no menu ou no cabeçalho.
+async function acharResultadoClicavel(page, nome, cpf = '') {
+  const marcado = await page.evaluate(({ nomeAlvo, cpfAlvo }) => {
+    document.querySelectorAll('[data-auto-resultado-servidor]').forEach((el) => el.removeAttribute('data-auto-resultado-servidor'));
+    const normalizar = (s) => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim().toLocaleUpperCase('pt-BR');
+    const alvo = normalizar(nomeAlvo);
+    const cpfDigitos = String(cpfAlvo || '').replace(/\D/g, '');
+    if (!alvo) return false;
+    const visivel = (el) => {
+      const r = el.getBoundingClientRect();
+      const s = getComputedStyle(el);
+      return r.width > 0 && r.height > 0 && s.display !== 'none' && s.visibility !== 'hidden';
+    };
+    const contemCpf = (el) => cpfDigitos.length === 11 && String(el.innerText || el.textContent || '').replace(/\D/g, '').includes(cpfDigitos);
+
+    // Com CPF, o nome retornado por outro módulo pode estar abreviado ou diferente.
+    // Encontre primeiro o cartão que contém o CPF da busca e use o link/nome desse cartão.
+    if (cpfDigitos.length === 11) {
+      const portadores = [...document.querySelectorAll('a, button, [role="link"], [role="button"], tr, [role="row"], span, div')]
+        .filter((el) => visivel(el) && contemCpf(el))
+        .sort((a, b) => (a.innerText || a.textContent || '').length - (b.innerText || b.textContent || '').length);
+      for (const portador of portadores) {
+        let cartao = portador;
+        for (let nivel = 0; nivel < 7 && cartao.parentElement; nivel++) {
+          const texto = cartao.innerText || cartao.textContent || '';
+          if (contemCpf(cartao) && texto.length > 20 && texto.length < 1200) break;
+          cartao = cartao.parentElement;
+        }
+        const links = [...cartao.querySelectorAll('a, button, [role="link"], [role="button"]')]
+          .filter((el) => visivel(el) && !contemCpf(el) && /[A-ZÀ-Ü]/i.test(el.innerText || el.textContent || ''));
+        const nomeLink = links.sort((a, b) => (a.innerText || a.textContent || '').length - (b.innerText || b.textContent || '').length)[0];
+        const alvoClique = nomeLink || portador;
+        alvoClique.setAttribute('data-auto-resultado-servidor', 'true');
+        return true;
+      }
+    }
+
+    // Busca por nome (usada quando a rotina procura o titular sem CPF).
+    // A lista nova do EducaDF não marca necessariamente o resultado como link/linha.
+    // O texto do nome pode estar num span/div dentro do cartão clicável.
+    const candidatos = [...document.querySelectorAll('a, button, [role="link"], [role="button"], tr, [role="row"], span, div')]
+      .filter((el) => visivel(el) && normalizar(el.innerText || el.textContent).includes(alvo))
+      .sort((a, b) => {
+        const at = normalizar(a.innerText || a.textContent);
+        const bt = normalizar(b.innerText || b.textContent);
+        return (at === alvo ? 0 : 1) - (bt === alvo ? 0 : 1) || at.length - bt.length;
+      });
+    const resultado = candidatos[0];
+    if (!resultado) return false;
+    resultado.setAttribute('data-auto-resultado-servidor', 'true');
+    return true;
+  }, { nomeAlvo: nome, cpfAlvo: cpf }).catch(() => false);
+  return marcado ? page.locator('[data-auto-resultado-servidor="true"]').first() : null;
+}
+
+async function aguardarResultadoClicavel(page, nome, cpf = '', timeout = 15000) {
+  const inicio = Date.now();
+  while (Date.now() - inicio < timeout) {
+    cancelamento.verificar();
+    const resultado = await acharResultadoClicavel(page, nome, cpf);
+    if (resultado) return resultado;
+    await page.waitForTimeout(250);
+  }
+  return null;
+}
+
 function paraISO(data) {
   const br = String(data || '').match(/(\d{2})\/(\d{2})\/(\d{4})/);
   if (br) return `${br[3]}-${br[2]}-${br[1]}`;
@@ -135,9 +202,7 @@ async function buscarServidor(nome, cpf = '') {
   await prepararTela(page);
   cancelamento.verificar();
 
-  if (!/[A-Za-zÀ-ú]/.test(nomeBusca)) {
-    throw new Error('A busca de Localizar Servidor precisa receber o nome do servidor, não o CPF.');
-  }
+  const termoBusca = cpfBusca || nomeBusca;
 
   // Limpa filtros que possam ter ficado com o CPF após uma tentativa anterior.
   const limparFiltros = page.getByText(/^Limpar$/i).filter({ visible: true }).first();
@@ -145,24 +210,37 @@ async function buscarServidor(nome, cpf = '') {
     await limparFiltros.click({ timeout: 3000 }).catch(() => {});
   }
 
-  // A busca nova aceita só nome/matrícula. CPF nunca é escrito em campo algum desta tela.
+  // Quando o fluxo já tem o CPF, pesquisa por ele na caixa principal. O nome continua
+  // sendo usado para identificar e abrir o resultado correspondente.
   const buscaPrincipal = await campoBuscaServidor(page);
   if (!buscaPrincipal) {
-    throw new Error('Não encontrei a caixa principal “nome ou matrícula” do Localizar Servidor. Nenhum filtro foi preenchido.');
+    throw new Error('Não encontrei a caixa principal de busca do Localizar Servidor. Nenhum filtro foi preenchido.');
   }
-  console.log('EducaDF: pesquisando Localizar Servidor pelo nome na caixa principal.');
-  await buscaPrincipal.fill(nomeBusca);
+  console.log(`EducaDF: pesquisando Localizar Servidor pelo ${cpfBusca ? 'CPF' : 'nome'} na caixa principal.`);
+  await buscaPrincipal.fill(termoBusca);
 
-  const resultado = page.getByText(nomeBusca, { exact: false }).filter({ visible: true }).first();
-  try {
-    await resultado.waitFor({ state: 'visible', timeout: 15000 });
-  } catch {
-    throw new Error(`Servidor não encontrado no EducaDF pelo nome “${nomeBusca}”.`);
+  const abrirFicha = await aguardarResultadoClicavel(page, nomeBusca, cpfBusca);
+  if (!abrirFicha) {
+    throw new Error(cpfBusca
+      ? 'O EducaDF encontrou a busca, mas não consegui identificar a linha pelo CPF para abrir a ficha.'
+      : 'O EducaDF não exibiu um resultado clicável para o servidor pesquisado. Confira o nome e tente novamente.');
   }
-  const abrirFicha = resultado;
 
-  await abrirFicha.click({ timeout: 8000 });
-  await page.waitForURL(/\/(?:localizar-servidor\/ficha|cadastro\/ficha-unificada)\//, { timeout: 15000 });
+  const urlFicha = /\/(?:localizar-servidor\/ficha|cadastro\/ficha-unificada)\//;
+  await abrirFicha.click({ timeout: 10000 });
+  let abriu = await page.waitForURL(urlFicha, { timeout: 8000 }).then(() => true).catch(() => false);
+  if (!abriu) {
+    // A tela informa que Enter abre a ficha após selecionar o resultado. Usar
+    // a navegação por teclado como fallback para cartões com clique customizado.
+    console.log('EducaDF: clique no nome não abriu a ficha; selecionando o resultado com seta e Enter.');
+    const busca = await campoBuscaServidor(page);
+    if (busca) {
+      await busca.press('ArrowDown').catch(() => {});
+      await busca.press('Enter').catch(() => {});
+      abriu = await page.waitForURL(urlFicha, { timeout: 12000 }).then(() => true).catch(() => false);
+    }
+  }
+  if (!abriu) throw new Error('O resultado do servidor apareceu, mas o EducaDF não abriu a ficha após clicar no nome/pressionar Enter.');
   cancelamento.verificar();
 
   const ficha = await lerFicha(page);
