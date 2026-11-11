@@ -57,46 +57,23 @@ async function fecharSobreposicoes(page) {
   }
 }
 
-// Clica em Modulação (se o grupo ainda estiver fechado) e em Banco de Aprovado no menu lateral.
-// Devolve true se clicou no item final; false se o menu não estava na tela ou o clique falhou.
-async function abrirBancoPeloMenu(page) {
-  try {
-    await fecharSobreposicoes(page);
-    const [pai, filho] = EDUCADF.menu;
-    const itemFilho = page.getByText(filho, { exact: true }).filter({ visible: true }).first();
-    if (!(await estaVisivel(itemFilho))) {
-      const itemPai = page.getByText(pai, { exact: true }).filter({ visible: true }).first();
-      if (!(await estaVisivel(itemPai))) return false;
-      await itemPai.click({ timeout: 3000 });
-      await page.waitForTimeout(500);
-    }
-    await itemFilho.click({ timeout: 3000 });
-    return true;
-  } catch (err) {
-    console.log(`EducaDF: o clique no menu falhou (${err.message.split('\n')[0]}).`);
-    return false;
-  }
-}
-
-// Espera a tela do Banco de Aprovado. Pelo caminho, VOCÊ clica em "Servidor" e depois em
-// Modulação > Banco de Aprovado. Quando o formulário de login aparecer, o programa preenche
-// a matrícula e a senha do .env e clica em Entrar (uma vez só).
+// Espera o Banco de Aprovados na rota direta de Gestão escolar. Isso evita selecionar
+// por engano a opção Modulação que agora também existe dentro de Recursos Humanos.
 async function prepararTela(page) {
   const campoCpf = page.getByPlaceholder(EDUCADF.placeholderCpf, { exact: true });
   const { EDUCADF_USUARIO, EDUCADF_SENHA } = process.env;
   const temCredenciais = Boolean(EDUCADF_USUARIO && EDUCADF_SENHA);
 
   console.log(
-    `EducaDF: aba aberta em ${onde(page)}. Na janela: clique em "Servidor"; depois do login, abra Modulação > Banco de Aprovado.`
+    `EducaDF: aba aberta em ${onde(page)}. Acessando Banco de Aprovados pela rota de Gestão escolar.`
   );
 
   const inicio = Date.now();
   let tentativas = 0;
   let preencheu = false;
   let avisouSemCredenciais = false;
-  let tentativasMenu = 0;
-  let ultimoMenu = 0;
-  let abriuPelaUrl = false;
+  let tentativasUrl = 0;
+  let ultimaTentativaUrl = 0;
 
   while (Date.now() - inicio < ESPERA_MS) {
     cancelamento.verificar();
@@ -107,27 +84,19 @@ async function prepararTela(page) {
 
     const frameLogin = await acharLogin(page);
 
-    // A aba pode estar em outra tela (ex.: Gestão de Carência, da Substituição): tenta ir para
-    // Modulação > Banco de Aprovado pelo menu lateral. Se o menu ainda não existe (falta clicar em
-    // "Servidor" ou entrar), tenta de novo daqui a pouco.
-    if (tentativasMenu < 10 && Date.now() - ultimoMenu > 4000 && !frameLogin) {
-      ultimoMenu = Date.now();
-      tentativasMenu += 1;
-      if (await abrirBancoPeloMenu(page)) {
-        console.log('EducaDF: abrindo Modulação > Banco de Aprovado pelo menu.');
-        await page.waitForTimeout(1500);
-        continue;
-      }
-
-      // O menu não funcionou duas vezes seguidas (ou não apareceu): abre a tela direto pelo endereço.
-      // Se a sessão do EducaDF ainda estiver ativa, ela abre sem pedir login de novo.
-      if (tentativasMenu >= 2 && !abriuPelaUrl && !onde(page).endsWith('/auth')) {
-        abriuPelaUrl = true;
-        console.log('EducaDF: o menu não abriu o Banco de Aprovado; abrindo a tela direto pelo endereço.');
-        await page.goto(URL_EDUCADF).catch(() => {});
-        await page.waitForTimeout(1500);
-        continue;
-      }
+    // Não procurar o item "Modulação" pelo texto: há duas opções homônimas no menu.
+    // A URL identifica sem ambiguidade a página de Gestão escolar > Banco de Aprovados.
+    const urlAtual = page.url();
+    const estaNaRotaCorreta = urlAtual.includes('/modulos/gestao/banco-aprovados');
+    const estaNoLogin = /\/auth(?:[/?#]|$)/i.test(urlAtual);
+    if (!frameLogin && !estaNaRotaCorreta && !estaNoLogin && tentativasUrl < 3 && Date.now() - ultimaTentativaUrl > 5000) {
+      tentativasUrl += 1;
+      ultimaTentativaUrl = Date.now();
+      console.log('EducaDF: abrindo diretamente Gestão escolar > Banco de Aprovados.');
+      await fecharSobreposicoes(page);
+      await page.goto(URL_EDUCADF).catch(() => {});
+      await page.waitForTimeout(1000);
+      continue;
     }
 
     if (!preencheu && tentativas < 3) {

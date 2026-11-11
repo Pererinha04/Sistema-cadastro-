@@ -23,16 +23,16 @@ const ESPERA_MS = 180000;
 
 const visivel = (locator) => locator.isVisible().catch(() => false);
 
-// Chega na tela "Gerenciar Carências": pelo menu lateral (Modulação > Gestão de Carência) e,
-// se não der, direto pela URL. Faz o login do EducaDF se a tela de login aparecer.
+// Chega em Gestão escolar > Gerenciar Carências pela rota direta. O item "Modulação"
+// existe também dentro de Recursos Humanos, então não deve ser escolhido pelo texto do menu.
 async function prepararTela(page) {
   const campo = page.getByPlaceholder(CARENCIA.placeholderCodigo, { exact: true });
   const { EDUCADF_USUARIO, EDUCADF_SENHA } = process.env;
 
   const inicio = Date.now();
   let preencheuLogin = false;
-  let tentouMenu = false;
-  let tentouUrl = false;
+  let tentativasUrl = 0;
+  let ultimaTentativaUrl = 0;
 
   while (Date.now() - inicio < ESPERA_MS) {
     cancelamento.verificar();
@@ -49,25 +49,17 @@ async function prepararTela(page) {
           console.log(`EducaDF: não consegui preencher o login (${err.message.split('\n')[0]}).`);
         }
       }
-    } else if (!tentouMenu) {
-      tentouMenu = true;
-      try {
-        const [pai, filho] = CARENCIA.menu;
-        const itemFilho = page.getByText(filho, { exact: true }).filter({ visible: true }).first();
-        if (!(await visivel(itemFilho))) {
-          await page.getByText(pai, { exact: true }).filter({ visible: true }).first().click({ timeout: 5000 });
-          await page.waitForTimeout(500);
-        }
-        await itemFilho.click({ timeout: 5000 });
-        console.log('EducaDF: abrindo Modulação > Gestão de Carência pelo menu.');
-        await page.waitForTimeout(1500);
-      } catch (err) {
-        console.log(`EducaDF: não consegui abrir pelo menu (${err.message.split('\n')[0]}).`);
+    } else {
+      const urlAtual = page.url();
+      const estaNaRotaCorreta = urlAtual.includes('/modulos/gestao/carencia');
+      const estaNoLogin = /\/auth(?:[/?#]|$)/i.test(urlAtual);
+      if (!estaNaRotaCorreta && !estaNoLogin && tentativasUrl < 3 && Date.now() - ultimaTentativaUrl > 5000) {
+        tentativasUrl += 1;
+        ultimaTentativaUrl = Date.now();
+        console.log('EducaDF: abrindo diretamente Gestão escolar > Gerenciar Carências.');
+        await page.goto(URL_CARENCIA).catch(() => {});
+        await page.waitForTimeout(1000);
       }
-    } else if (!tentouUrl && Date.now() - inicio > 15000) {
-      tentouUrl = true;
-      console.log('EducaDF: abrindo Gestão de Carência direto pela URL.');
-      await page.goto(URL_CARENCIA).catch(() => {});
     }
 
     await page.waitForTimeout(500);
