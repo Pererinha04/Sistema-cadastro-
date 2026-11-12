@@ -34,6 +34,7 @@ app.use(['/buscar', '/carencia/datas'], (req, res, next) => cancelamento.executa
 app.use(express.static(path.join(__dirname, 'public')));
 
 const soDigitos = (s) => String(s || '').replace(/\D/g, '');
+const normalizarMatricula = (s) => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
 const pareceAno = (s) => /^(19|20)\d{2}$/.test(String(s || ''));
 
 // ---------- Configurações (.env) ----------
@@ -103,7 +104,7 @@ function validar(d) {
   if (!d.nome || !d.nome.trim()) return 'Informe o nome.';
   if (soDigitos(d.cpf).length !== 11) return 'O CPF precisa ter 11 dígitos.';
   if (!d.classificacao || !String(d.classificacao).trim()) return 'Informe a classificação.';
-  if (!soDigitos(d.matricula)) return 'Informe a matrícula (somente números).';
+  if (!normalizarMatricula(d.matricula)) return 'Informe a matrícula.';
   if (!/^\d{4}-\d{2}-\d{2}$/.test(d.dataNascimento || '')) return 'Informe a data de nascimento.';
   if (!['Masculino', 'Feminino'].includes(d.sexo)) return 'Escolha o sexo.';
   if (d.cargaHoraria && !/^\d{1,3}$/.test(d.cargaHoraria)) return 'A carga horária deve ter só números (ex.: 30).';
@@ -192,7 +193,7 @@ app.post('/preencher', async (req, res) => {
     nome: String(req.body.nome || '').trim().toUpperCase(),
     cpf: req.body.cpf,
     classificacao: String(req.body.classificacao || '').trim(),
-    matricula: soDigitos(req.body.matricula),
+    matricula: normalizarMatricula(req.body.matricula),
     dataNascimento: req.body.dataNascimento,
     sexo: req.body.sexo,
     dataAssinatura: paraBR(req.body.dataAssinatura),
@@ -290,7 +291,7 @@ app.post('/substituicao/preencher', async (req, res) => {
     motivo: String(req.body.motivo || '').trim(),
     nome: String(req.body.nome || '').trim().toUpperCase(),
     cpf: soDigitos(req.body.cpf),
-    matricula: soDigitos(req.body.matricula),
+    matricula: normalizarMatricula(req.body.matricula),
     especialidade: String(req.body.especialidade || '').trim(),
     turno: String(req.body.turno || '').trim(),
     cargaHoraria: soDigitos(req.body.cargaHoraria),

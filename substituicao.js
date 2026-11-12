@@ -49,6 +49,7 @@ async function aguardar(page, limiteMs = 2500, quietoMs = 120) {
 const { SUBSTITUICAO } = require('./config');
 
 const soDigitos = (s) => String(s || '').replace(/\D/g, '');
+const normalizarMatricula = (s) => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
 const formatarCpf = (s) => soDigitos(s).replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/, '$1.$2.$3-$4');
 
 // ---------- achar os campos da aba Substituição ----------
@@ -428,7 +429,7 @@ async function preencherSubstituicao(d) {
     const campos = [
       ['nome', 'Nome', String(d.nome || '').trim().toUpperCase(), false],
       ['cpf', 'CPF', formatarCpf(d.cpf), true],
-      ['matricula', 'Matrícula', soDigitos(d.matricula), false],
+      ['matricula', 'Matrícula', normalizarMatricula(d.matricula), false],
     ];
     for (const [chave, rotulo, valor, mascara] of campos) {
       if (!valor) {

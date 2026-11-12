@@ -32,32 +32,13 @@ async function campoBuscaServidor(page) {
   return marcado ? page.locator('[data-auto-busca-servidor="true"]').first() : null;
 }
 
-async function abrirPeloMenu(page) {
-  try {
-    let item = page.getByText('Localizar Servidor', { exact: true }).filter({ visible: true }).first();
-    if (!(await item.isVisible().catch(() => false))) {
-      const unidade = page.getByText('Unidade Escolar', { exact: true }).filter({ visible: true }).first();
-      if (await unidade.isVisible().catch(() => false)) {
-        await unidade.click({ timeout: 4000 });
-        await page.waitForTimeout(400);
-      }
-      item = page.getByText('Localizar Servidor', { exact: true }).filter({ visible: true }).first();
-    }
-    if (await item.isVisible().catch(() => false)) {
-      await item.click({ timeout: 5000 });
-      await page.waitForTimeout(800);
-      return true;
-    }
-  } catch {}
-  return false;
-}
-
 async function prepararTela(page) {
   const pronta = async () => page.url().includes('/localizar-servidor') && Boolean(await campoBuscaServidor(page));
   if (await pronta()) return;
 
-  if (!(await abrirPeloMenu(page)) || !(await pronta())) {
-    await page.goto(URL_LOCALIZAR_SERVIDOR).catch(() => {});
+  // A rota direta evita abrir e fechar menus; também não espera imagens/analytics.
+  if (!page.url().includes('/localizar-servidor')) {
+    await page.goto(URL_LOCALIZAR_SERVIDOR, { waitUntil: 'domcontentloaded', timeout: 20000 }).catch(() => {});
   }
 
   const inicio = Date.now();
@@ -74,24 +55,26 @@ async function prepararTela(page) {
         preencheuLogin = true;
       }
     }
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(250);
   }
   throw new Error('A tela Unidade Escolar > Localizar Servidor não abriu no EducaDF. Entre no sistema e tente novamente.');
 }
 
 async function lerFicha(page) {
-  const abaFuncionais = page.getByText(/^(Dados Funcionais|Funcional)$/i).first();
-  await abaFuncionais.click({ timeout: 8000 });
-  await page.getByText(/^(DADOS FUNCIONAIS|Vínculo e jornada)$/i).last().waitFor({ state: 'visible', timeout: 10000 });
+  const abaFuncionais = page.getByText(/^(Dados Funcionais|Funcional)$/i).filter({ visible: true }).last();
+  await abaFuncionais.waitFor({ state: 'visible', timeout: 5000 });
+  await abaFuncionais.click({ timeout: 5000 });
+  await page.getByText(/^(DADOS FUNCIONAIS|Vínculo e jornada)$/i).filter({ visible: true }).last().waitFor({ state: 'visible', timeout: 6000 });
   const matricula = await page.evaluate(() => {
     const texto = document.body.innerText;
-    const encontrados = [...texto.matchAll(/\bMatr[ií]cula\s*:?\s*(\d{5,})/gi)];
+    const encontrados = [...texto.matchAll(/\bMatr[ií]cula\s*:?\s*([A-Z0-9]{5,})/gi)];
     return encontrados.length ? encontrados[encontrados.length - 1][1] : '';
   });
 
-  const abaPessoais = page.getByText(/^(Dados Pessoais|Pessoal)$/i).first();
-  await abaPessoais.click({ timeout: 8000 });
-  await page.getByText(/^(Nome Completo|Dados Pessoais)$/i).first().waitFor({ state: 'visible', timeout: 10000 });
+  const abaPessoais = page.getByText(/^(Dados Pessoais|Pessoal)$/i).filter({ visible: true }).last();
+  await abaPessoais.waitFor({ state: 'visible', timeout: 5000 });
+  await abaPessoais.click({ timeout: 5000 });
+  await page.getByText(/^(Nome Completo|Dados Pessoais)$/i).filter({ visible: true }).first().waitFor({ state: 'visible', timeout: 6000 });
   const dadosPessoais = await page.evaluate(() => {
     const linhas = document.body.innerText.split(/\n+/).map((s) => s.trim()).filter(Boolean);
     const semAcento = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
@@ -201,6 +184,7 @@ async function buscarServidor(nome, cpf = '') {
   const page = await obterAba('educadf', URL_LOCALIZAR_SERVIDOR);
   await prepararTela(page);
   cancelamento.verificar();
+  const etapaInicio = Date.now();
 
   const termoBusca = cpfBusca || nomeBusca;
 
@@ -225,6 +209,7 @@ async function buscarServidor(nome, cpf = '') {
       ? 'O EducaDF encontrou a busca, mas não consegui identificar a linha pelo CPF para abrir a ficha.'
       : 'O EducaDF não exibiu um resultado clicável para o servidor pesquisado. Confira o nome e tente novamente.');
   }
+  console.log(`EducaDF: resultado de Localizar Servidor pronto em ${((Date.now() - etapaInicio) / 1000).toFixed(1)} s.`);
 
   const urlFicha = /\/(?:localizar-servidor\/ficha|cadastro\/ficha-unificada)\//;
   await abrirFicha.click({ timeout: 10000 });
@@ -241,13 +226,16 @@ async function buscarServidor(nome, cpf = '') {
     }
   }
   if (!abriu) throw new Error('O resultado do servidor apareceu, mas o EducaDF não abriu a ficha após clicar no nome/pressionar Enter.');
+  console.log(`EducaDF: ficha do servidor aberta em ${((Date.now() - etapaInicio) / 1000).toFixed(1)} s.`);
   cancelamento.verificar();
 
+  const leituraInicio = Date.now();
   const ficha = await lerFicha(page);
+  console.log(`EducaDF: dados pessoais e funcionais lidos em ${((Date.now() - leituraInicio) / 1000).toFixed(1)} s.`);
   const cpfLido = soDigitos(ficha.cpf);
   const cpfFicha = cpfLido.length === 11 ? cpfLido : '';
   // Matrícula vem da aba Dados Funcionais da ficha aberta, não da linha de resultados.
-  const matriculaFuncional = soDigitos(ficha.matricula);
+  const matriculaFuncional = String(ficha.matricula || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
   const matriculas = matriculaFuncional ? [matriculaFuncional] : [];
   if (cpfBusca && cpfFicha && cpfFicha !== cpfBusca) {
     throw new Error('O CPF da ficha aberta não corresponde ao CPF pesquisado. A busca foi interrompida para evitar usar dados de outra pessoa.');

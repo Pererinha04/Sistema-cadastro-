@@ -47,7 +47,11 @@ async function obterAba(chave, url) {
     page = await ctx.newPage();
     abas[chave] = page;
     if (url) {
-      await page.goto(url);
+      // Aguarda o DOM básico, sem esperar imagens/analytics que não são necessários
+      // para os seletores da automação e podem atrasar a abertura da tela.
+      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 20000 }).catch((err) => {
+        console.log(`Navegação inicial para ${new URL(url).pathname} ainda não concluiu: ${err.message.split('\n')[0]}`);
+      });
     } else {
       console.log(
         `Aba "${chave}" aberta em branco: preencha a URL dela no config.js, ou navegue até a tela à mão (sem fechar a janela).`
