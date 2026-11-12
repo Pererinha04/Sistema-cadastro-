@@ -57,12 +57,11 @@ async function prepararTela(page) {
         tentativasUrl += 1;
         ultimaTentativaUrl = Date.now();
         console.log('EducaDF: abrindo diretamente Gestão escolar > Gerenciar Carências.');
-        await page.goto(URL_CARENCIA).catch(() => {});
-        await page.waitForTimeout(1000);
+        await page.goto(URL_CARENCIA, { waitUntil: 'domcontentloaded', timeout: 20000 }).catch(() => {});
       }
     }
 
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(250);
   }
 
   throw new Error(
@@ -192,8 +191,7 @@ async function buscarCarencia(codigo) {
     if (detalhes.nomeCarga) nomeCarga = detalhes.nomeCarga;
 
     await page.getByRole('button', { name: /Horários da carência/i }).last().click({ timeout: 8000 });
-    await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
-    await page.waitForTimeout(1000);
+    await page.waitForTimeout(200);
     textoHorarios = await page.locator('body').innerText().catch(() => '');
   } catch (err) {
     avisos.push(`Não consegui abrir os detalhes/horários da carência (${err.message.split('\n')[0]}).`);
@@ -208,7 +206,7 @@ async function buscarCarencia(codigo) {
       if (await fechar.count()) await fechar.click({ timeout: 3000 });
       else await page.keyboard.press('Escape');
     }
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(150);
   } catch {}
 
   const { turnos, cargas } = lerHorarios(textoHorarios);

@@ -29,8 +29,20 @@ const cancelamento = require('./cancelamento');
 const app = express();
 app.use(express.json());
 
+// O EducaDF usa uma única aba compartilhada entre Banco de Aprovados, carências
+// e Localizar Servidor. Enfileira as rotas que mexem nessa aba para uma busca não
+// navegar/alterar os campos no meio da outra.
+let filaEducaDF = Promise.resolve();
+function serializarEducaDF(handler) {
+  return (req, res, next) => {
+    const tarefa = filaEducaDF.then(() => (res.destroyed ? undefined : handler(req, res, next)));
+    filaEducaDF = tarefa.catch(() => {});
+    tarefa.catch(next);
+  };
+}
+
 // Buscas que podem ser canceladas pelo botão "Cancelar busca".
-app.use(['/buscar', '/carencia/datas'], (req, res, next) => cancelamento.executar(next));
+app.use(['/buscar', '/carencia/datas', '/substituicao/buscar'], (req, res, next) => cancelamento.executar(next));
 app.use(express.static(path.join(__dirname, 'public')));
 
 const soDigitos = (s) => String(s || '').replace(/\D/g, '');
@@ -127,7 +139,7 @@ const mensagem = (err) =>
 // Busca nome e classificação no Banco de Aprovados e matrícula, nascimento e sexo em Localizar Servidor.
 // Se uma etapa falhar, devolve os dados que conseguiu e um aviso para completar à mão.
 // Obs.: só registra mensagens de erro no terminal, nunca os dados pessoais.
-app.post('/buscar', async (req, res) => {
+app.post('/buscar', serializarEducaDF(async (req, res) => {
   const cpf = soDigitos(req.body.cpf);
   if (cpf.length !== 11) return res.status(400).json({ ok: false, erro: 'O CPF precisa ter 11 dígitos.' });
 
@@ -165,10 +177,10 @@ app.post('/buscar', async (req, res) => {
   }
 
   res.json(resultado);
-});
+}));
 
 // Busca o Período da carência no EducaDF (Gestão de Carência) para preencher as datas do contrato.
-app.post('/carencia/datas', async (req, res) => {
+app.post('/carencia/datas', serializarEducaDF(async (req, res) => {
   const codigo = soDigitos(req.body.codigo);
   if (!codigo) return res.status(400).json({ ok: false, erro: 'Informe o código da carência.' });
   if (pareceAno(codigo)) return res.status(400).json({ ok: false, erro: `“${codigo}” parece ser um ano, não um código de carência. Confira o código EducaDF.` });
@@ -180,7 +192,7 @@ app.post('/carencia/datas', async (req, res) => {
     console.error('EducaDF (período):', err.message);
     res.status(500).json({ ok: false, erro: `EducaDF: ${mensagem(err)}` });
   }
-});
+}));
 
 // Botão "Cancelar busca": as buscas em andamento param na próxima verificação.
 app.post('/cancelar', (req, res) => {
@@ -217,7 +229,7 @@ app.post('/preencher', async (req, res) => {
 // ---------- Substituição ----------
 
 // Busca a carência no EducaDF e localiza o titular pela tela Unidade Escolar > Localizar Servidor.
-app.post('/substituicao/buscar', async (req, res) => {
+app.post('/substituicao/buscar', serializarEducaDF(async (req, res) => {
   const codigo = soDigitos(req.body.codigo);
   if (!codigo) return res.status(400).json({ ok: false, erro: 'Informe o código da carência.' });
   if (pareceAno(codigo)) return res.status(400).json({ ok: false, erro: `“${codigo}” parece ser um ano, não um código de carência. Informe o ID da carência.` });
@@ -281,7 +293,7 @@ app.post('/substituicao/buscar', async (req, res) => {
   }
 
   res.json(resultado);
-});
+}));
 
 // Clica na aba Substituição do SIRAC e preenche. Não clica em Adicionar.
 app.post('/substituicao/preencher', async (req, res) => {

@@ -61,6 +61,7 @@ async function fecharSobreposicoes(page) {
 // por engano a opção Modulação que agora também existe dentro de Recursos Humanos.
 async function prepararTela(page) {
   const campoCpf = page.getByPlaceholder(EDUCADF.placeholderCpf, { exact: true });
+  const botaoBuscar = page.getByRole('button', { name: 'Buscar', exact: true }).filter({ visible: true }).last();
   const { EDUCADF_USUARIO, EDUCADF_SENHA } = process.env;
   const temCredenciais = Boolean(EDUCADF_USUARIO && EDUCADF_SENHA);
 
@@ -77,7 +78,7 @@ async function prepararTela(page) {
 
   while (Date.now() - inicio < ESPERA_MS) {
     cancelamento.verificar();
-    if (await estaVisivel(campoCpf)) {
+    if (await estaVisivel(campoCpf) && await estaVisivel(botaoBuscar) && await botaoBuscar.isEnabled().catch(() => false)) {
       console.log('EducaDF: tela do Banco de Aprovado aberta.');
       return;
     }
@@ -94,8 +95,7 @@ async function prepararTela(page) {
       ultimaTentativaUrl = Date.now();
       console.log('EducaDF: abrindo diretamente Gestão escolar > Banco de Aprovados.');
       await fecharSobreposicoes(page);
-      await page.goto(URL_EDUCADF).catch(() => {});
-      await page.waitForTimeout(1000);
+      await page.goto(URL_EDUCADF, { waitUntil: 'domcontentloaded', timeout: 20000 }).catch(() => {});
       continue;
     }
 
@@ -124,7 +124,7 @@ async function prepararTela(page) {
       }
     }
 
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(250);
   }
 
   throw new Error(
@@ -149,8 +149,9 @@ async function lerHistoricoConvocacoes(page, linha, nomeCandidato) {
     await alvo.click({ timeout: 8000 });
     // O EducaDF abre os detalhes em uma área lateral da própria página, não em um modal.
     await page.getByText(/Convocações neste edital/i).first().waitFor({ state: 'visible', timeout: 15000 });
-    await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
-    await page.waitForTimeout(1500);
+    // O drawer já está pronto quando o título aparece; não esperar analytics e
+    // conexões em segundo plano (networkidle deixava cada busca até 10 s mais lenta).
+    await page.waitForTimeout(200);
     cancelamento.verificar();
 
     dados = await page.evaluate(() => {
@@ -186,7 +187,7 @@ async function lerHistoricoConvocacoes(page, linha, nomeCandidato) {
       if (await fechar.count()) await fechar.click({ timeout: 3000 });
       else await page.keyboard.press('Escape');
     }
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(150);
   } catch {}
 
   if (!dados) return { ano, total: null, codigos: [], avisos, texto: '' };
@@ -262,9 +263,36 @@ async function buscarNoEducaDF(cpf) {
   await prepararTela(page);
 
   const campoCpf = page.getByPlaceholder(EDUCADF.placeholderCpf, { exact: true });
-
+  // Fecha um possível painel lateral deixado pela consulta anterior antes de
+  // reutilizar a mesma tela e o mesmo botão Buscar.
+  const painelHistorico = page.getByText(/Convocações neste edital/i).filter({ visible: true }).first();
+  if (await painelHistorico.count().catch(() => 0)) {
+    await page.keyboard.press('Escape').catch(() => {});
+    await painelHistorico.waitFor({ state: 'hidden', timeout: 1200 }).catch(async () => {
+      const fechado = await page.evaluate(() => {
+        const vis = (el) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
+        const b = [...document.querySelectorAll('button,[role="button"]')].find((el) => vis(el)
+          && /fechar|close|dismiss/i.test(`${el.getAttribute('aria-label') || ''} ${el.getAttribute('title') || ''} ${el.innerText || ''}`));
+        if (!b) return false;
+        b.click();
+        return true;
+      }).catch(() => false);
+      if (fechado) await painelHistorico.waitFor({ state: 'hidden', timeout: 1200 }).catch(() => {});
+    });
+  }
   await campoCpf.fill(digitos);
-  await page.getByRole('button', { name: 'Buscar', exact: true }).click();
+  const botaoBuscar = page.getByRole('button', { name: 'Buscar', exact: true }).filter({ visible: true }).last();
+  await botaoBuscar.waitFor({ state: 'visible', timeout: 5000 });
+  const limiteBotao = Date.now() + 8000;
+  while (!(await botaoBuscar.isEnabled().catch(() => false)) && Date.now() < limiteBotao) {
+    cancelamento.verificar();
+    await page.waitForTimeout(150);
+  }
+  if (!(await botaoBuscar.isEnabled().catch(() => false))) {
+    throw new Error('O botão Buscar do Banco de Aprovados continua desabilitado. Aguarde a tela terminar de carregar e tente novamente.');
+  }
+  await botaoBuscar.scrollIntoViewIfNeeded({ timeout: 3000 }).catch(() => {});
+  await botaoBuscar.click({ timeout: 8000 });
 
   const linha = page
     .locator('tr, [role="row"]')

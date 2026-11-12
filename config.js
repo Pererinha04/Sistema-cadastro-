@@ -8,7 +8,7 @@ module.exports = {
 
   // Pausa (em milissegundos) que o programa faz depois de cada ação no navegador. Menor = mais rápido.
   // Se o SIRAC começar a dar erros estranhos, volte para 150 (valor antigo).
-  LENTIDAO_MS: 60,
+  LENTIDAO_MS: 0,
 
   // Tela inicial: Cadastrar Admissão.
   URL_SIRAC:

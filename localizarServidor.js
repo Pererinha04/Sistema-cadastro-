@@ -61,10 +61,19 @@ async function prepararTela(page) {
 }
 
 async function lerFicha(page) {
+  const inicioCarregamento = Date.now();
   const abaFuncionais = page.getByText(/^(Dados Funcionais|Funcional)$/i).filter({ visible: true }).last();
-  await abaFuncionais.waitFor({ state: 'visible', timeout: 5000 });
-  await abaFuncionais.click({ timeout: 5000 });
-  await page.getByText(/^(DADOS FUNCIONAIS|Vínculo e jornada)$/i).filter({ visible: true }).last().waitFor({ state: 'visible', timeout: 6000 });
+  try {
+    // A ficha nova mostra skeleton enquanto carrega os dados do servidor. Não
+    // tente clicar nas abas durante esse estado: espere a interface real aparecer.
+    await abaFuncionais.waitFor({ state: 'visible', timeout: 30000 });
+  } catch {
+    throw new Error('A ficha do servidor abriu, mas o EducaDF continuou carregando por 30 segundos e não exibiu a aba Funcional.');
+  }
+  cancelamento.verificar();
+  console.log(`EducaDF: ficha carregada e aba Funcional disponível após ${((Date.now() - inicioCarregamento) / 1000).toFixed(1)} s.`);
+  await abaFuncionais.click({ timeout: 10000 });
+  await page.getByText(/^(DADOS FUNCIONAIS|Vínculo e jornada)$/i).filter({ visible: true }).last().waitFor({ state: 'visible', timeout: 20000 });
   const matricula = await page.evaluate(() => {
     const texto = document.body.innerText;
     const encontrados = [...texto.matchAll(/\bMatr[ií]cula\s*:?\s*([A-Z0-9]{5,})/gi)];
@@ -72,9 +81,9 @@ async function lerFicha(page) {
   });
 
   const abaPessoais = page.getByText(/^(Dados Pessoais|Pessoal)$/i).filter({ visible: true }).last();
-  await abaPessoais.waitFor({ state: 'visible', timeout: 5000 });
-  await abaPessoais.click({ timeout: 5000 });
-  await page.getByText(/^(Nome Completo|Dados Pessoais)$/i).filter({ visible: true }).first().waitFor({ state: 'visible', timeout: 6000 });
+  await abaPessoais.waitFor({ state: 'visible', timeout: 10000 });
+  await abaPessoais.click({ timeout: 10000 });
+  await page.getByText(/^(Nome Completo|Dados Pessoais)$/i).filter({ visible: true }).first().waitFor({ state: 'visible', timeout: 20000 });
   const dadosPessoais = await page.evaluate(() => {
     const linhas = document.body.innerText.split(/\n+/).map((s) => s.trim()).filter(Boolean);
     const semAcento = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
