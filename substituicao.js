@@ -562,6 +562,23 @@ async function preencherSubstituicao(d) {
     }
   }
 
+  // Observação é comum aos dois caminhos (Abertura da Turma = Sim ou Não).
+  // Deixe por último porque postbacks das listas podem recriar os campos do formulário.
+  if (d.codigoCarencia) {
+    const observacao = await esperarCampo(page, 'observacao', 'Observação', 'texto', 0, 8000);
+    if (!observacao) {
+      pendencias.push('Observação (não achei o campo no SIRAC)');
+    } else {
+      const texto = `QC ${soDigitos(d.codigoCarencia)}`;
+      await preencherCampo(observacao, texto);
+      const atual = await observacao.inputValue().catch(() => '');
+      if (atual.trim() === texto) preenchidos.push(`Observação (${texto})`);
+      else pendencias.push('Observação (o SIRAC não manteve o código da carência)');
+    }
+  } else {
+    pendencias.push('Observação (código da carência não informado)');
+  }
+
   // Fica para você: conferir as datas, o motivo (se não houver opção compatível), a especialidade sem titular e clicar em Adicionar.
   await page.bringToFront();
   return { preenchidos, pendencias };

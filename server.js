@@ -286,6 +286,7 @@ app.post('/substituicao/buscar', async (req, res) => {
 app.post('/substituicao/preencher', async (req, res) => {
   const dados = {
     temTitular: Boolean(req.body.temTitular),
+    codigoCarencia: soDigitos(req.body.codigoCarencia),
     motivo: String(req.body.motivo || '').trim(),
     nome: String(req.body.nome || '').trim().toUpperCase(),
     cpf: soDigitos(req.body.cpf),
